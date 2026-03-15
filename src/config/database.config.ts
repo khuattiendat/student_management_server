@@ -1,5 +1,6 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+import { join } from 'path';
 
 export const databaseConfig = (
   configService: ConfigService,
@@ -10,6 +11,7 @@ export const databaseConfig = (
   username: configService.get<string>('DB_USERNAME', 'root'),
   password: configService.get<string>('DB_PASSWORD', 'password'),
   database: configService.get<string>('DB_NAME', 'test'),
+  entities: [join(__dirname, '/../**/*.entity{.ts,.js}')],
   autoLoadEntities: true,
   synchronize: false,
 });
