@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -18,6 +19,8 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { UserRole } from '@/database/entities/user.entity';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.TEACHER)
@@ -42,7 +45,7 @@ export class BranchesController {
   }
 
   @Roles(UserRole.ADMIN)
-  @Patch(':id')
+  @Put(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateBranchDto: UpdateBranchDto,
@@ -54,5 +57,9 @@ export class BranchesController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.branchesService.remove(id);
+  }
+  @Get('classes/with-classes')
+  findAllWithClasses(@CurrentUser() user: AuthenticatedUser) {
+    return this.branchesService.findAllWithClasses(user);
   }
 }

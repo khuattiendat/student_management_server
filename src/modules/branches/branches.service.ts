@@ -5,6 +5,8 @@ import { Branch } from '@/database/entities/branch.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UserRole } from '@/database/entities/user.entity';
 
 @Injectable()
 export class BranchesService {
@@ -13,6 +15,27 @@ export class BranchesService {
     private readonly branchRepository: Repository<Branch>,
   ) {}
 
+  async findAllWithClasses(user: AuthenticatedUser) {
+    const userId = user.sub;
+    const userRole = user.role;
+    if (userRole === UserRole.ADMIN) {
+      const branches = await this.branchRepository
+        .createQueryBuilder('branch')
+        .leftJoinAndSelect('branch.classes', 'class')
+        .where('class.status = :status', { status: 'active' })
+        .getMany();
+
+      return branches;
+    }
+    const branches = await this.branchRepository
+      .createQueryBuilder('branch')
+      .leftJoinAndSelect('branch.classes', 'class')
+      .leftJoinAndSelect('class.teachers', 'teacher')
+      .where('teacher.id = :userId', { userId })
+      .getMany();
+
+    return branches;
+  }
   async create(createBranchDto: CreateBranchDto) {
     const branch = this.branchRepository.create(createBranchDto);
     return this.branchRepository.save(branch);
@@ -61,13 +84,19 @@ export class BranchesService {
 
   async update(id: number, updateBranchDto: UpdateBranchDto) {
     const branch = await this.findOne(id);
+    if (!branch) {
+      throw new NotFoundException(`Branch with id ${id} not found`);
+    }
     Object.assign(branch, updateBranchDto);
     return this.branchRepository.save(branch);
   }
 
   async remove(id: number) {
-    await this.findOne(id);
-    await this.branchRepository.softDelete(id);
+    const branch = await this.findOne(id);
+    if (!branch) {
+      throw new NotFoundException(`Branch with id ${id} not found`);
+    }
+    await this.branchRepository.remove(branch);
 
     return {
       message: 'Branch deleted successfully',

@@ -7,6 +7,10 @@ import { databaseConfig } from './config/database.config';
 import { envConfig } from './config/env.config';
 import { BranchesModule } from './modules/branches/branches.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { ClassesModule } from './modules/classes/classes.module';
+import { PackagesModule } from './modules/packages/packages.module';
+import { SessionsModule } from './modules/sessions/sessions.module';
 
 @Module({
   imports: [
@@ -18,6 +22,10 @@ import { AuthModule } from './modules/auth/auth.module';
     }),
     BranchesModule,
     AuthModule,
+    UsersModule,
+    ClassesModule,
+    PackagesModule,
+    SessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

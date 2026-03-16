@@ -14,6 +14,8 @@ import { Branch } from '@/database/entities/branch.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { StringValue } from 'ms';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 interface JwtPayload {
   sub: number;
@@ -92,17 +94,17 @@ export class AuthService {
       .getOne();
 
     if (!user) {
-      throw new UnauthorizedException('Invalid username or password');
+      throw new BadRequestException('Invalid username or password');
     }
 
     const isMatch = await bcrypt.compare(loginDto.password, user.password);
 
     if (!isMatch) {
-      throw new UnauthorizedException('Invalid username or password');
+      throw new BadRequestException('Invalid username or password');
     }
 
     if (user.status === UserStatus.INACTIVE) {
-      throw new UnauthorizedException('User is inactive');
+      throw new BadRequestException('User is inactive');
     }
 
     const tokens = await this.generateTokens(user);
@@ -161,6 +163,75 @@ export class AuthService {
     }
 
     return this.buildUserProfile(user);
+  }
+
+  async changePassword(userId: number, changePasswordDto: ChangePasswordDto) {
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .leftJoinAndSelect('user.branches', 'branches')
+      .where('user.id = :userId', { userId })
+      .getOne();
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const isCurrentPasswordMatch = await bcrypt.compare(
+      changePasswordDto.currentPassword,
+      user.password,
+    );
+
+    if (!isCurrentPasswordMatch) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    const isSamePassword = await bcrypt.compare(
+      changePasswordDto.newPassword,
+      user.password,
+    );
+
+    if (isSamePassword) {
+      throw new BadRequestException(
+        'New password must be different from current password',
+      );
+    }
+
+    const hashedNewPassword = await bcrypt.hash(
+      changePasswordDto.newPassword,
+      10,
+    );
+
+    await this.userRepository.update(user.id, {
+      password: hashedNewPassword,
+    });
+
+    return {
+      message: 'Password changed successfully',
+    };
+  }
+
+  async updateProfile(userId: number, updateProfileDto: UpdateProfileDto) {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ['branches'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (updateProfileDto.name !== undefined) {
+      user.name = updateProfileDto.name;
+    }
+
+    if (updateProfileDto.phone !== undefined) {
+      user.phone = updateProfileDto.phone;
+    }
+
+    const updatedUser = await this.userRepository.save(user);
+
+    return this.buildUserProfile(updatedUser);
   }
 
   private async generateTokens(user: User) {

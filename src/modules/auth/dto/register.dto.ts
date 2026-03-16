@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsOptional, MinLength } from 'class-validator';
+import { UserStatus } from '@/database/entities/user.entity';
+import { IsEnum, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @IsNotEmpty()
@@ -10,6 +11,9 @@ export class RegisterDto {
   password: string;
   @IsOptional()
   phone?: string;
+  @IsOptional()
+  @IsEnum(UserStatus)
+  status?: UserStatus;
   @IsOptional()
   branchIds?: number[];
 }

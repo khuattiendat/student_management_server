@@ -12,7 +12,7 @@ export class Package extends BaseEntity {
   @Column({ name: 'name', type: 'varchar', length: 255, nullable: false })
   name: string;
 
-  @Column({ name: 'total_sessions', type: 'int', nullable: false })
+  @Column({ name: 'total_sessions', type: 'int', nullable: true })
   totalSessions: number;
 
   @Column({
