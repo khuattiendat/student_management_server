@@ -34,9 +34,9 @@ export class Student extends BaseEntity {
   @Column({
     nullable: true,
     name: 'birthday',
-    type: 'date',
+    type: 'varchar',
   })
-  birthday: Date;
+  birthday: string;
 
   @Column({
     nullable: true,

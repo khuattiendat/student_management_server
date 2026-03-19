@@ -19,7 +19,6 @@ export class CreateStudentDto {
   name: string;
 
   @IsOptional()
-  @IsDateString()
   birthday?: string;
 
   @IsOptional()

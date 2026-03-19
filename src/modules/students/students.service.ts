@@ -68,9 +68,7 @@ export class StudentsService {
       const studentRepository = manager.getRepository(Student);
       const student = studentRepository.create({
         name: createStudentDto.name,
-        birthday: createStudentDto.birthday
-          ? new Date(createStudentDto.birthday)
-          : undefined,
+        birthday: createStudentDto.birthday,
         phone: createStudentDto.phone,
         branchId: branch ? branch.id : null,
         branch,
@@ -229,7 +227,7 @@ export class StudentsService {
       }
 
       if (updateStudentDto.birthday !== undefined) {
-        student.birthday = new Date(updateStudentDto.birthday);
+        student.birthday = updateStudentDto.birthday;
       }
 
       if (updateStudentDto.branchId !== undefined) {

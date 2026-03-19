@@ -22,4 +22,7 @@ export class CreatePackageDto {
 
   @IsEnum(PackageType)
   type: PackageType;
+
+  @IsOptional()
+  info: Record<string, any>;
 }

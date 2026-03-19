@@ -17,4 +17,7 @@ export class UpdatePackageDto {
   @IsOptional()
   @IsEnum(PackageType)
   type?: PackageType;
+
+  @IsOptional()
+  info: Record<string, any>;
 }

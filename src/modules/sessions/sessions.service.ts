@@ -488,11 +488,11 @@ export class SessionsService {
       const currentRemaining = existing?.remainingSessions ?? 0;
       const nextRemaining = currentRemaining - delta;
 
-      if (nextRemaining < 0) {
-        throw new BadRequestException(
-          `Student ${studentId} does not have enough remaining sessions`,
-        );
-      }
+      // if (nextRemaining < 0) {
+      //   throw new BadRequestException(
+      //     `Student ${studentId} does not have enough remaining sessions`,
+      //   );
+      // }
 
       if (existing) {
         existing.remainingSessions = nextRemaining;

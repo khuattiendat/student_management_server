@@ -10,4 +10,7 @@ export class QueryUserDto extends BaseQueryDto {
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
+
+  @IsOptional()
+  branchId?: string;
 }

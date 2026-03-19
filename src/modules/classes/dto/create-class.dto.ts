@@ -28,6 +28,7 @@ export class CreateClassDto {
   @Min(1)
   teacherId: number;
 
+  @IsOptional()
   @IsInt()
   @Min(1)
   packageId: number;

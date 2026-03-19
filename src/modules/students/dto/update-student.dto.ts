@@ -16,7 +16,6 @@ export class UpdateStudentDto {
   name?: string;
 
   @IsOptional()
-  @IsDateString()
   birthday?: string;
 
   @IsOptional()

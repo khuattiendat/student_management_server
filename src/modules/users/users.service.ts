@@ -24,6 +24,7 @@ export class UsersService {
     const page = Math.max(Number(query.page) || 1, 1);
     const limit = Math.max(Number(query.limit) || 10, 1);
     const search = query.search?.trim();
+    const branchId = query.branchId ? Number(query.branchId) : null;
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
@@ -43,6 +44,9 @@ export class UsersService {
             .orWhere('user.phone LIKE :search', { search: `%${search}%` });
         }),
       );
+    }
+    if (branchId) {
+      queryBuilder.andWhere('branches.id = :branchId', { branchId });
     }
     if (query.status) {
       queryBuilder.andWhere('user.status = :status', {
