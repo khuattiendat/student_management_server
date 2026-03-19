@@ -2,23 +2,20 @@ import {
   Body,
   Controller,
   Delete,
-  HttpStatus,
   Get,
-  ParseFilePipeBuilder,
   Param,
   ParseIntPipe,
   Post,
   Put,
   Query,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SessionsService } from './sessions.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { QuerySessionDto } from './dto/query-session.dto';
+import { BulkAttendanceDto } from './dto/bulk-attendance.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -61,32 +58,26 @@ export class SessionsController {
     return this.sessionsService.remove(id);
   }
 
-  @Roles(UserRole.ADMIN)
-  @Post('import-excel')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: {
-        fileSize: 5 * 1024 * 1024,
-      },
-    }),
-  )
-  importExcel(
-    @UploadedFile(
-      new ParseFilePipeBuilder()
-        .addFileTypeValidator({
-          fileType:
-            /^(application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|application\/vnd\.ms-excel)$/,
-        })
-        .addMaxSizeValidator({
-          maxSize: 5 * 1024 * 1024,
-        })
-        .build({
-          fileIsRequired: true,
-          errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
-        }),
-    )
-    file: Express.Multer.File,
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @Post(':id/attendance')
+  takeAttendance(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() bulkAttendanceDto: BulkAttendanceDto,
   ) {
-    return this.sessionsService.importExcel(file);
+    return this.sessionsService.takeAttendance(id, bulkAttendanceDto);
+  }
+
+  @Get(':id/attendance')
+  getAttendance(@Param('id', ParseIntPipe) id: number) {
+    return this.sessionsService.getAttendance(id);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @Put(':id/attendance')
+  updateAttendance(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() bulkAttendanceDto: BulkAttendanceDto,
+  ) {
+    return this.sessionsService.updateAttendanceList(id, bulkAttendanceDto);
   }
 }

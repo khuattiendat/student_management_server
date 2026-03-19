@@ -1,10 +1,11 @@
 import { Column, Entity, OneToMany } from 'typeorm';
 import { BaseEntity } from '@/common/base/base.entity';
 import { Enrollment } from './enrollment.entity';
+import { Class } from './class.entity';
 
 export enum PackageType {
-  COMBO = 'combo',
-  COURSE = 'course',
+  CERTIFICATE = 'certificate', // Lớp học có chứng chỉ (tính theo số lượng buổi học)
+  GENERAL = 'general', // Lớp học phổ  thông (tính theo thời gian)
 }
 
 @Entity('packages')
@@ -29,15 +30,13 @@ export class Package extends BaseEntity {
     type: 'enum',
     enum: PackageType,
     nullable: false,
+    default: PackageType.CERTIFICATE,
   })
   type: PackageType;
 
-  @Column({ name: 'start_date', type: 'date', nullable: true })
-  startDate: Date;
-
-  @Column({ name: 'end_date', type: 'date', nullable: true })
-  endDate: Date;
-
   @OneToMany(() => Enrollment, (enrollment) => enrollment.package)
   enrollments: Enrollment[];
+
+  @OneToMany(() => Class, (classEntity) => classEntity.package)
+  classes: Class[];
 }

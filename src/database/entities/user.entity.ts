@@ -6,6 +6,7 @@ import {
   JoinTable,
   ManyToMany,
   ManyToOne,
+  OneToMany,
 } from 'typeorm';
 import { Branch } from './branch.entity';
 import { Class } from './class.entity';
@@ -80,19 +81,6 @@ export class User extends BaseEntity {
   })
   branches: Branch[];
 
-  @ManyToMany(() => Class, (classEntity) => classEntity.teachers, {
-    onDelete: 'CASCADE',
-  })
-  @JoinTable({
-    name: 'class_teachers',
-    joinColumn: {
-      name: 'user_id',
-      referencedColumnName: 'id',
-    },
-    inverseJoinColumn: {
-      name: 'class_id',
-      referencedColumnName: 'id',
-    },
-  })
+  @OneToMany(() => Class, (classEntity) => classEntity.teacher)
   classes: Class[];
 }

@@ -4,9 +4,9 @@ import { Student } from './student.entity';
 import { BaseEntity } from '@/common/base/base.entity';
 
 export enum AttendanceStatus {
-  PRESENT = 'present',
-  ABSENT = 'absent',
-  LATE = 'late',
+  PRESENT = 'present', // Đi học
+  ABSENT = 'absent', // Vắng mặt
+  LATE = 'late', //
 }
 
 @Entity('attendances')
@@ -27,8 +27,8 @@ export class Attendance extends BaseEntity {
   })
   status: AttendanceStatus;
 
-  @Column({ name: 'note', type: 'text', nullable: true })
-  note: string;
+  @Column({ name: 'rate', type: 'int', nullable: true })
+  rate: number | null;
 
   @ManyToOne(() => Session, (session) => session.attendances, {
     nullable: false,

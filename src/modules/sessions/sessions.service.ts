@@ -4,13 +4,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
 import { Session } from '@/database/entities/session.entity';
-import { Class } from '@/database/entities/class.entity';
+import { Class, ClassType } from '@/database/entities/class.entity';
+import {
+  Attendance,
+  AttendanceStatus,
+} from '@/database/entities/attendance.entity';
+import { ClassStudent } from '@/database/entities/class_student.entity';
+import { StudentRemainings } from '@/database/entities/student_remainings.entity';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { QuerySessionDto } from './dto/query-session.dto';
+import {
+  AttendanceStudentItemDto,
+  BulkAttendanceDto,
+} from './dto/bulk-attendance.dto';
 
 type SessionImportPayload = {
   classId: number;
@@ -41,7 +51,166 @@ export class SessionsService {
     private readonly sessionRepository: Repository<Session>,
     @InjectRepository(Class)
     private readonly classRepository: Repository<Class>,
+    @InjectRepository(Attendance)
+    private readonly attendanceRepository: Repository<Attendance>,
+    @InjectRepository(ClassStudent)
+    private readonly classStudentRepository: Repository<ClassStudent>,
+    @InjectRepository(StudentRemainings)
+    private readonly studentRemainingsRepository: Repository<StudentRemainings>,
   ) {}
+
+  async takeAttendance(
+    sessionId: number,
+    bulkAttendanceDto: BulkAttendanceDto,
+  ) {
+    const normalizedAttendances = this.normalizeAttendances(
+      bulkAttendanceDto.attendances,
+    );
+    const studentIds = normalizedAttendances.map((item) => item.studentId);
+
+    return this.sessionRepository.manager.transaction(async (manager) => {
+      const session = await this.findSessionWithClass(sessionId, manager);
+
+      await this.ensureStudentsInClass(session.classId, studentIds, manager);
+
+      const attendanceRepository = manager.getRepository(Attendance);
+      const existingAttendances = await attendanceRepository.find({
+        where: {
+          sessionId,
+          studentId: In(studentIds),
+        },
+      });
+
+      const existingAttendanceMap = new Map(
+        existingAttendances.map((item) => [item.studentId, item]),
+      );
+
+      let consumedSessionDelta = new Map<number, number>();
+      if (session.classEntity.type === ClassType.GENERAL) {
+        consumedSessionDelta = this.calculateGeneralConsumedSessionDelta(
+          normalizedAttendances,
+          existingAttendanceMap,
+        );
+        await this.applyGeneralRemainingAdjustments(
+          consumedSessionDelta,
+          manager,
+        );
+      }
+
+      const upserts = normalizedAttendances.map((item) => {
+        const existing = existingAttendanceMap.get(item.studentId);
+        if (existing) {
+          existing.status = item.status;
+          existing.rate = item.rate ?? null;
+          return existing;
+        }
+
+        return attendanceRepository.create({
+          sessionId,
+          studentId: item.studentId,
+          status: item.status,
+          rate: item.rate ?? null,
+        });
+      });
+
+      await attendanceRepository.save(upserts);
+
+      const result = await this.buildSessionAttendanceResponse(
+        sessionId,
+        manager,
+      );
+      return {
+        ...result,
+        adjustedRemainings:
+          session.classEntity.type === ClassType.GENERAL
+            ? [...consumedSessionDelta.entries()]
+                .filter(([, delta]) => delta !== 0)
+                .map(([studentId, delta]) => ({ studentId, delta }))
+            : [],
+      };
+    });
+  }
+
+  async getAttendance(sessionId: number) {
+    return this.buildSessionAttendanceResponse(sessionId);
+  }
+
+  async updateAttendanceList(
+    sessionId: number,
+    bulkAttendanceDto: BulkAttendanceDto,
+  ) {
+    const normalizedAttendances = this.normalizeAttendances(
+      bulkAttendanceDto.attendances,
+    );
+
+    return this.sessionRepository.manager.transaction(async (manager) => {
+      const session = await this.findSessionWithClass(sessionId, manager);
+      const attendanceRepository = manager.getRepository(Attendance);
+
+      const existingAttendances = await attendanceRepository.find({
+        where: { sessionId },
+      });
+
+      const existingAttendanceMap = new Map(
+        existingAttendances.map((item) => [item.studentId, item]),
+      );
+      const nextAttendanceMap = new Map(
+        normalizedAttendances.map((item) => [item.studentId, item]),
+      );
+
+      const nextStudentIds = [...nextAttendanceMap.keys()];
+      await this.ensureStudentsInClass(
+        session.classId,
+        nextStudentIds,
+        manager,
+      );
+
+      if (session.classEntity.type === ClassType.GENERAL) {
+        const affectedStudentIds = [
+          ...new Set([
+            ...existingAttendanceMap.keys(),
+            ...nextAttendanceMap.keys(),
+          ]),
+        ];
+
+        const deltaMap = new Map<number, number>();
+        affectedStudentIds.forEach((studentId) => {
+          const previousStatus = existingAttendanceMap.get(studentId)?.status;
+          const nextStatus = nextAttendanceMap.get(studentId)?.status;
+
+          const previousConsumed = previousStatus
+            ? this.isAttendanceConsumed(previousStatus)
+            : false;
+          const nextConsumed = nextStatus
+            ? this.isAttendanceConsumed(nextStatus)
+            : false;
+
+          deltaMap.set(
+            studentId,
+            Number(nextConsumed) - Number(previousConsumed),
+          );
+        });
+
+        await this.applyGeneralRemainingAdjustments(deltaMap, manager);
+      }
+
+      await attendanceRepository.delete({ sessionId });
+
+      if (normalizedAttendances.length > 0) {
+        const insertRows = normalizedAttendances.map((item) =>
+          attendanceRepository.create({
+            sessionId,
+            studentId: item.studentId,
+            status: item.status,
+            rate: item.rate ?? null,
+          }),
+        );
+        await attendanceRepository.save(insertRows);
+      }
+
+      return this.buildSessionAttendanceResponse(sessionId, manager);
+    });
+  }
 
   async create(createSessionDto: CreateSessionDto) {
     await this.ensureClassExists(createSessionDto.classId);
@@ -156,124 +325,6 @@ export class SessionsService {
       id,
     };
   }
-
-  async importExcel(file: Express.Multer.File) {
-    if (!file) {
-      throw new BadRequestException('Excel file is required');
-    }
-
-    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-    const firstSheetName = workbook.SheetNames[0];
-
-    if (!firstSheetName) {
-      throw new BadRequestException('Excel file has no sheets');
-    }
-
-    const sheet = workbook.Sheets[firstSheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-      defval: '',
-    });
-
-    if (!rows.length) {
-      throw new BadRequestException('Excel file is empty');
-    }
-
-    if (rows.length > IMPORT_MAX_ROWS) {
-      throw new BadRequestException(
-        `Excel file cannot exceed ${IMPORT_MAX_ROWS} rows`,
-      );
-    }
-
-    const missingColumns = this.getMissingColumns(rows[0]);
-    if (missingColumns.length) {
-      throw new BadRequestException({
-        message: 'Invalid Excel columns',
-        requiredColumns: Object.keys(HEADER_ALIASES),
-        missingColumns,
-      });
-    }
-
-    const errors: SessionImportError[] = [];
-    const payloads: SessionImportPayload[] = [];
-    const duplicateKeys = new Set<string>();
-
-    rows.forEach((row, index) => {
-      const rowNumber = index + 2;
-
-      try {
-        const classIdRaw = this.getRowValue(row, HEADER_ALIASES.classId);
-        const sessionDateRaw = this.getRowValue(
-          row,
-          HEADER_ALIASES.sessionDate,
-        );
-        const startTimeRaw = this.getRowValue(row, HEADER_ALIASES.startTime);
-        const endTimeRaw = this.getRowValue(row, HEADER_ALIASES.endTime);
-        const classId = this.parsePositiveInt(classIdRaw, 'classId');
-        const sessionDate = this.parseDate(sessionDateRaw, 'sessionDate');
-        const startTime = this.parseTime(startTimeRaw, 'startTime');
-        const endTime = this.parseTime(endTimeRaw, 'endTime');
-
-        this.validateTimeRange(startTime, endTime);
-
-        const duplicateKey = `${classId}|${this.toIsoDateOnly(sessionDate)}|${startTime}|${endTime}`;
-        if (duplicateKeys.has(duplicateKey)) {
-          throw new Error('duplicate session in file');
-        }
-        duplicateKeys.add(duplicateKey);
-
-        payloads.push({
-          classId,
-          sessionDate,
-          startTime,
-          endTime,
-        });
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Invalid row format';
-        errors.push({
-          row: rowNumber,
-          field: this.inferErrorField(message),
-          message,
-        });
-      }
-    });
-
-    if (errors.length) {
-      throw new BadRequestException({
-        message: 'Invalid Excel data',
-        totalErrors: errors.length,
-        errors: errors.slice(0, MAX_ERROR_PREVIEW),
-        hasMoreErrors: errors.length > MAX_ERROR_PREVIEW,
-      });
-    }
-
-    const classIds = [...new Set(payloads.map((item) => item.classId))];
-    const existingClasses = await this.classRepository.find({
-      where: { id: In(classIds) },
-    });
-    const existingClassIdSet = new Set(existingClasses.map((item) => item.id));
-    const invalidClassIds = classIds.filter(
-      (id) => !existingClassIdSet.has(id),
-    );
-
-    if (invalidClassIds.length) {
-      throw new BadRequestException(
-        `Invalid classId(s): ${invalidClassIds.join(', ')}`,
-      );
-    }
-
-    const entities = this.sessionRepository.create(payloads);
-    await this.sessionRepository.manager.transaction(async (manager) => {
-      await manager.save(Session, entities);
-    });
-
-    return {
-      message: 'Sessions imported successfully',
-      totalRows: rows.length,
-      totalImported: entities.length,
-    };
-  }
-
   private async ensureClassExists(classId: number) {
     const classEntity = await this.classRepository.findOne({
       where: { id: classId },
@@ -284,140 +335,188 @@ export class SessionsService {
     }
   }
 
+  private async findSessionWithClass(
+    sessionId: number,
+    manager?: EntityManager,
+  ): Promise<Session> {
+    const sessionRepository =
+      manager?.getRepository(Session) ?? this.sessionRepository;
+
+    const session = await sessionRepository.findOne({
+      where: { id: sessionId },
+      relations: ['classEntity'],
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session with id ${sessionId} not found`);
+    }
+
+    return session;
+  }
+
+  private async buildSessionAttendanceResponse(
+    sessionId: number,
+    manager?: EntityManager,
+  ) {
+    const session = await this.findSessionWithClass(sessionId, manager);
+    const classStudentRepository =
+      manager?.getRepository(ClassStudent) ?? this.classStudentRepository;
+    const attendanceRepository =
+      manager?.getRepository(Attendance) ?? this.attendanceRepository;
+
+    const [classStudents, attendances] = await Promise.all([
+      classStudentRepository.find({
+        where: { classId: session.classId },
+        relations: ['student'],
+      }),
+      attendanceRepository.find({
+        where: { sessionId },
+        relations: ['student'],
+      }),
+    ]);
+
+    const attendanceMap = new Map(
+      attendances.map((attendance) => [attendance.studentId, attendance]),
+    );
+
+    const items = classStudents.map((classStudent) => {
+      const attendance = attendanceMap.get(classStudent.studentId);
+      return {
+        studentId: classStudent.studentId,
+        student: classStudent.student,
+        attendanceId: attendance?.id ?? null,
+        status: attendance?.status ?? null,
+        rate: attendance?.rate ?? null,
+      };
+    });
+
+    return {
+      sessionId: session.id,
+      classId: session.classId,
+      classType: session.classEntity.type,
+      totalStudents: items.length,
+      totalTaken: attendances.length,
+      items,
+    };
+  }
+
+  private normalizeAttendances(
+    attendances: AttendanceStudentItemDto[],
+  ): AttendanceStudentItemDto[] {
+    return [
+      ...new Map(attendances.map((item) => [item.studentId, item])).values(),
+    ];
+  }
+
+  private async ensureStudentsInClass(
+    classId: number,
+    studentIds: number[],
+    manager?: EntityManager,
+  ): Promise<void> {
+    if (studentIds.length === 0) {
+      return;
+    }
+
+    const classStudentRepository =
+      manager?.getRepository(ClassStudent) ?? this.classStudentRepository;
+
+    const classStudents = await classStudentRepository.find({
+      where: {
+        classId,
+        studentId: In(studentIds),
+      },
+      select: ['studentId'],
+    });
+
+    const validIds = new Set(classStudents.map((item) => item.studentId));
+    const invalidStudentIds = studentIds.filter((id) => !validIds.has(id));
+
+    if (invalidStudentIds.length > 0) {
+      throw new BadRequestException(
+        `Students are not enrolled in class ${classId}: ${invalidStudentIds.join(', ')}`,
+      );
+    }
+  }
+
+  private calculateGeneralConsumedSessionDelta(
+    attendances: AttendanceStudentItemDto[],
+    existingAttendanceMap: Map<number, Attendance>,
+  ): Map<number, number> {
+    const deltaMap = new Map<number, number>();
+
+    attendances.forEach((item) => {
+      const existing = existingAttendanceMap.get(item.studentId);
+      const previousConsumed = existing
+        ? this.isAttendanceConsumed(existing.status)
+        : false;
+      const nextConsumed = this.isAttendanceConsumed(item.status);
+
+      const delta = Number(nextConsumed) - Number(previousConsumed);
+      deltaMap.set(item.studentId, delta);
+    });
+
+    return deltaMap;
+  }
+
+  private async applyGeneralRemainingAdjustments(
+    consumedSessionDelta: Map<number, number>,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const targetStudentIds = [...consumedSessionDelta.entries()]
+      .filter(([, delta]) => delta !== 0)
+      .map(([studentId]) => studentId);
+
+    if (targetStudentIds.length === 0) {
+      return;
+    }
+
+    const studentRemainingsRepository =
+      manager?.getRepository(StudentRemainings) ??
+      this.studentRemainingsRepository;
+
+    const remainings = await studentRemainingsRepository.find({
+      where: { studentId: In(targetStudentIds) },
+    });
+
+    const remainingsMap = new Map(
+      remainings.map((item) => [item.studentId, item]),
+    );
+
+    for (const studentId of targetStudentIds) {
+      const delta = consumedSessionDelta.get(studentId) ?? 0;
+      const existing = remainingsMap.get(studentId);
+      const currentRemaining = existing?.remainingSessions ?? 0;
+      const nextRemaining = currentRemaining - delta;
+
+      if (nextRemaining < 0) {
+        throw new BadRequestException(
+          `Student ${studentId} does not have enough remaining sessions`,
+        );
+      }
+
+      if (existing) {
+        existing.remainingSessions = nextRemaining;
+      } else {
+        remainingsMap.set(
+          studentId,
+          studentRemainingsRepository.create({
+            studentId,
+            remainingSessions: nextRemaining,
+          }),
+        );
+      }
+    }
+
+    await studentRemainingsRepository.save([...remainingsMap.values()]);
+  }
+
+  private isAttendanceConsumed(status: AttendanceStatus): boolean {
+    return status !== AttendanceStatus.ABSENT;
+  }
+
   private validateTimeRange(startTime: string, endTime: string) {
     if (startTime >= endTime) {
       throw new BadRequestException('endTime must be greater than startTime');
     }
-  }
-
-  private getRowValue(
-    row: Record<string, unknown>,
-    aliases: readonly string[],
-  ) {
-    const normalizedAliases = aliases.map((alias) => this.normalizeKey(alias));
-
-    for (const [key, value] of Object.entries(row)) {
-      const normalizedKey = this.normalizeKey(key);
-      if (normalizedAliases.includes(normalizedKey)) {
-        return value;
-      }
-    }
-
-    return undefined;
-  }
-
-  private normalizeKey(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
-
-  private parsePositiveInt(value: unknown, fieldName: string): number {
-    const parsed = Number(value);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      throw new Error(`${fieldName} must be a positive integer`);
-    }
-    return parsed;
-  }
-
-  private parseDate(value: unknown, fieldName: string): Date {
-    if (value instanceof Date && !Number.isNaN(value.getTime())) {
-      return this.normalizeDate(value);
-    }
-
-    if (typeof value === 'number') {
-      const parsed = XLSX.SSF.parse_date_code(value);
-      if (!parsed) {
-        throw new Error(`${fieldName} is invalid`);
-      }
-      return new Date(parsed.y, parsed.m - 1, parsed.d);
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) {
-        throw new Error(`${fieldName} is required`);
-      }
-
-      const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dateOnlyMatch) {
-        const year = Number(dateOnlyMatch[1]);
-        const month = Number(dateOnlyMatch[2]);
-        const day = Number(dateOnlyMatch[3]);
-        const parsedDate = new Date(year, month - 1, day);
-        if (!Number.isNaN(parsedDate.getTime())) {
-          return parsedDate;
-        }
-      }
-
-      const parsed = new Date(trimmed);
-      if (!Number.isNaN(parsed.getTime())) {
-        return this.normalizeDate(parsed);
-      }
-    }
-
-    throw new Error(`${fieldName} is invalid`);
-  }
-
-  private parseTime(value: unknown, fieldName: string): string {
-    if (typeof value === 'number') {
-      const totalSeconds = Math.round(value * 24 * 60 * 60);
-      const normalizedSeconds = ((totalSeconds % 86400) + 86400) % 86400;
-      const hours = Math.floor(normalizedSeconds / 3600)
-        .toString()
-        .padStart(2, '0');
-      const minutes = Math.floor((normalizedSeconds % 3600) / 60)
-        .toString()
-        .padStart(2, '0');
-
-      return `${hours}:${minutes}`;
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (!trimmed) {
-        throw new Error(`${fieldName} is required`);
-      }
-
-      const militaryTimeRegex = /^([01]?\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
-      if (militaryTimeRegex.test(trimmed)) {
-        const [hourPart, minutePart] = trimmed.split(':');
-        const hours = hourPart.padStart(2, '0');
-        return `${hours}:${minutePart}`;
-      }
-    }
-
-    throw new Error(`${fieldName} must be in HH:mm format`);
-  }
-
-  private normalizeDate(value: Date): Date {
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-  }
-
-  private toIsoDateOnly(value: Date): string {
-    return value.toISOString().slice(0, 10);
-  }
-
-  private getMissingColumns(row: Record<string, unknown>): string[] {
-    return Object.entries(HEADER_ALIASES)
-      .filter(([, aliases]) => this.getRowValue(row, aliases) === undefined)
-      .map(([field]) => field);
-  }
-
-  private inferErrorField(message: string): string {
-    if (message.includes('classId')) {
-      return 'classId';
-    }
-    if (message.includes('sessionDate')) {
-      return 'sessionDate';
-    }
-    if (message.includes('startTime')) {
-      return 'startTime';
-    }
-    if (message.includes('endTime')) {
-      return 'endTime';
-    }
-    if (message.includes('duplicate')) {
-      return 'row';
-    }
-    return 'unknown';
   }
 }

@@ -11,6 +11,7 @@ import { UsersModule } from './modules/users/users.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { PackagesModule } from './modules/packages/packages.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { StudentsModule } from './modules/students/students.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SessionsModule } from './modules/sessions/sessions.module';
     ClassesModule,
     PackagesModule,
     SessionsModule,
+    StudentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

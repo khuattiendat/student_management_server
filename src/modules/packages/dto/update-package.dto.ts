@@ -1,11 +1,4 @@
-import {
-  IsDateString,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  MaxLength,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, MaxLength, Min } from 'class-validator';
 import { PackageType } from '@/database/entities/package.entity';
 
 export class UpdatePackageDto {
@@ -24,12 +17,4 @@ export class UpdatePackageDto {
   @IsOptional()
   @IsEnum(PackageType)
   type?: PackageType;
-
-  @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
 }

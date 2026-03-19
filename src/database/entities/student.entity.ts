@@ -9,10 +9,11 @@ import {
 } from 'typeorm';
 import { BaseEntity } from '@/common/base/base.entity';
 import { Branch } from './branch.entity';
-import { ClassStudent } from './class_student.entity';
 import { Enrollment } from './enrollment.entity';
 import { Attendance } from './attendance.entity';
 import { Parent } from './parent.entity';
+import { ClassStudent } from './class_student.entity';
+import { StudentRemainings } from './student_remainings.entity';
 
 @Entity('students')
 export class Student extends BaseEntity {
@@ -54,9 +55,6 @@ export class Student extends BaseEntity {
   @OneToMany(() => Enrollment, (enrollment) => enrollment.student)
   enrollments: Enrollment[];
 
-  @OneToMany(() => ClassStudent, (classStudent) => classStudent.student)
-  classStudents: ClassStudent[];
-
   @OneToMany(() => Attendance, (attendance) => attendance.student)
   attendances: Attendance[];
   @ManyToMany(() => Parent, (parent) => parent.students, {
@@ -75,4 +73,10 @@ export class Student extends BaseEntity {
     },
   })
   parents: Parent[];
+
+  @OneToMany(() => ClassStudent, (classStudent) => classStudent.student)
+  classStudents: ClassStudent[];
+
+  @OneToMany(() => StudentRemainings, (remainings) => remainings.student)
+  remainings: StudentRemainings[];
 }

@@ -30,7 +30,7 @@ export class BranchesService {
     const branches = await this.branchRepository
       .createQueryBuilder('branch')
       .leftJoinAndSelect('branch.classes', 'class')
-      .leftJoinAndSelect('class.teachers', 'teacher')
+      .leftJoinAndSelect('class.teacher', 'teacher')
       .where('teacher.id = :userId', { userId })
       .getMany();
 

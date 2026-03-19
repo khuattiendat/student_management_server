@@ -1,5 +1,4 @@
 import {
-  IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -23,12 +22,4 @@ export class CreatePackageDto {
 
   @IsEnum(PackageType)
   type: PackageType;
-
-  @IsOptional()
-  @IsDateString()
-  startDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
 }
