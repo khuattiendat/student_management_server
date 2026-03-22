@@ -37,6 +37,38 @@ export class Student extends BaseEntity {
     type: 'varchar',
   })
   birthday: string;
+  @Column({
+    name: 'address_detail',
+    nullable: true,
+    length: 255,
+  })
+  addressDetail: string;
+
+  @Column({
+    name: 'province_code',
+    nullable: true,
+  })
+  provinceCode: number;
+
+  @Column({
+    name: 'ward_code',
+    nullable: true,
+  })
+  wardCode: number;
+
+  @Column({
+    name: 'province_name',
+    nullable: true,
+    length: 255,
+  })
+  provinceName: string;
+
+  @Column({
+    name: 'ward_name',
+    nullable: true,
+    length: 255,
+  })
+  wardName: string;
 
   @Column({
     nullable: true,
@@ -55,7 +87,9 @@ export class Student extends BaseEntity {
   @OneToMany(() => Enrollment, (enrollment) => enrollment.student)
   enrollments: Enrollment[];
 
-  @OneToMany(() => Attendance, (attendance) => attendance.student)
+  @OneToMany(() => Attendance, (attendance) => attendance.student, {
+    cascade: true,
+  })
   attendances: Attendance[];
   @ManyToMany(() => Parent, (parent) => parent.students, {
     cascade: true,

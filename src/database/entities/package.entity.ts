@@ -2,6 +2,7 @@ import { Column, Entity, OneToMany } from 'typeorm';
 import { BaseEntity } from '@/common/base/base.entity';
 import { Enrollment } from './enrollment.entity';
 import { Class } from './class.entity';
+import { ClassPackage } from './class_packages.entity';
 
 export enum PackageType {
   CERTIFICATE = 'certificate', // Lớp học có chứng chỉ (tính theo số lượng buổi học)
@@ -15,15 +16,9 @@ export enum Curriculum {
 }
 // Loại combo
 export enum ComboType {
-  CB3X = '3x',
-  CB6X = '6x',
-  CB12X = '12x',
-}
-// Lứa tuổi
-export enum AgeGroup {
-  MAM_NON = 'mam_non', // <6 tuổi
-  TIEU_HOC = 'tieu_hoc', // 6-12 tuổi
-  TREN_12 = 'tren_12', // 12+ tuổi
+  STANDARD = 'standard', // Combo tiêu chuẩn
+  BREAKTHROUGH = 'breakthrough', // Combo đột phá
+  ACCOMPANYING = 'accompanying', // Combo đồng hành
 }
 // loại chứng chỉ
 export enum CertificateType {
@@ -66,7 +61,6 @@ export interface PackageInfo {
   type?: PackageType;
   curriculum?: Curriculum;
   comboType?: ComboType;
-  ageGroup?: AgeGroup;
   certificateType?: CertificateType;
   subject?: Subject;
   class?: ClassTYpe;
@@ -108,6 +102,6 @@ export class Package extends BaseEntity {
   @OneToMany(() => Enrollment, (enrollment) => enrollment.package)
   enrollments: Enrollment[];
 
-  @OneToMany(() => Class, (classEntity) => classEntity.package)
-  classes: Class[];
+  @OneToMany(() => ClassPackage, (classPackage) => classPackage.package)
+  classPackage: ClassPackage[];
 }

@@ -19,6 +19,24 @@ export class CreateStudentDto {
   name: string;
 
   @IsOptional()
+  @MaxLength(255)
+  addressDetail?: string;
+
+  @IsOptional()
+  provinceCode?: number;
+
+  @IsOptional()
+  wardCode?: number;
+
+  @IsOptional()
+  @MaxLength(255)
+  provinceName?: string;
+
+  @IsOptional()
+  @MaxLength(255)
+  wardName?: string;
+
+  @IsOptional()
   birthday?: string;
 
   @IsOptional()

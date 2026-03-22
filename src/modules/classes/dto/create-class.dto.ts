@@ -5,8 +5,8 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
-  IsMilitaryTime,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   MaxLength,
   Min,
@@ -14,6 +14,11 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ClassStatus, ClassType } from '@/database/entities/class.entity';
+
+export interface WeekdayScheduleDto {
+  startTime: string;
+  endTime: string;
+}
 
 export class CreateClassDto {
   @IsNotEmpty()
@@ -28,14 +33,8 @@ export class CreateClassDto {
   @Min(1)
   teacherId: number;
 
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  packageId: number;
-
-  @IsOptional()
   @IsEnum(ClassType)
-  type?: ClassType;
+  type: ClassType;
 
   @IsOptional()
   @IsEnum(ClassStatus)
@@ -53,13 +52,8 @@ export class CreateClassDto {
   @Max(6, { each: true })
   weekdays: number[];
 
-  @IsNotEmpty()
-  @IsMilitaryTime()
-  startTime: string;
-
-  @IsNotEmpty()
-  @IsMilitaryTime()
-  endTime: string;
+  @IsObject()
+  scheduleByWeekday: Record<string, WeekdayScheduleDto>;
 
   @IsOptional()
   @IsArray()
@@ -68,4 +62,12 @@ export class CreateClassDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   studentIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  packageIds?: number[];
 }

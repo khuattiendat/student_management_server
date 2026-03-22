@@ -18,6 +18,9 @@ export class Enrollment extends BaseEntity {
   @JoinColumn({ name: 'student_id' })
   student: Student;
 
+  @Column({ name: 'remaining_sessions', type: 'int', nullable: false })
+  remainingSessions: number;
+
   @ManyToOne(() => Package, (pack) => pack.enrollments, {
     nullable: false,
     onDelete: 'CASCADE',

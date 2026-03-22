@@ -13,7 +13,7 @@ import {
   AttendanceStatus,
 } from '@/database/entities/attendance.entity';
 import { ClassStudent } from '@/database/entities/class_student.entity';
-import { StudentRemainings } from '@/database/entities/student_remainings.entity';
+import { Enrollment } from '@/database/entities/enrollment.entity';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { QuerySessionDto } from './dto/query-session.dto';
@@ -55,8 +55,8 @@ export class SessionsService {
     private readonly attendanceRepository: Repository<Attendance>,
     @InjectRepository(ClassStudent)
     private readonly classStudentRepository: Repository<ClassStudent>,
-    @InjectRepository(StudentRemainings)
-    private readonly studentRemainingsRepository: Repository<StudentRemainings>,
+    @InjectRepository(Enrollment)
+    private readonly enrollmentRepository: Repository<Enrollment>,
   ) {}
 
   async takeAttendance(
@@ -86,13 +86,18 @@ export class SessionsService {
       );
 
       let consumedSessionDelta = new Map<number, number>();
-      if (session.classEntity.type === ClassType.GENERAL) {
+      if (
+        session.classEntity.type === ClassType.GENERAL ||
+        session.classEntity.type === ClassType.SCHOOL_SUBJECT
+      ) {
+        const packageId = this.getGeneralClassPackageId(session.classEntity);
         consumedSessionDelta = this.calculateGeneralConsumedSessionDelta(
           normalizedAttendances,
           existingAttendanceMap,
         );
         await this.applyGeneralRemainingAdjustments(
           consumedSessionDelta,
+          packageId,
           manager,
         );
       }
@@ -122,7 +127,8 @@ export class SessionsService {
       return {
         ...result,
         adjustedRemainings:
-          session.classEntity.type === ClassType.GENERAL
+          session.classEntity.type === ClassType.GENERAL ||
+          session.classEntity.type === ClassType.SCHOOL_SUBJECT
             ? [...consumedSessionDelta.entries()]
                 .filter(([, delta]) => delta !== 0)
                 .map(([studentId, delta]) => ({ studentId, delta }))
@@ -165,7 +171,11 @@ export class SessionsService {
         manager,
       );
 
-      if (session.classEntity.type === ClassType.GENERAL) {
+      if (
+        session.classEntity.type === ClassType.GENERAL ||
+        session.classEntity.type === ClassType.SCHOOL_SUBJECT
+      ) {
+        const packageId = this.getGeneralClassPackageId(session.classEntity);
         const affectedStudentIds = [
           ...new Set([
             ...existingAttendanceMap.keys(),
@@ -191,7 +201,11 @@ export class SessionsService {
           );
         });
 
-        await this.applyGeneralRemainingAdjustments(deltaMap, manager);
+        await this.applyGeneralRemainingAdjustments(
+          deltaMap,
+          packageId,
+          manager,
+        );
       }
 
       await attendanceRepository.delete({ sessionId });
@@ -228,16 +242,16 @@ export class SessionsService {
   }
 
   async findAll(query: QuerySessionDto) {
-    const page = Math.max(Number(query.page) || 1, 1);
-    const limit = Math.max(Number(query.limit) || 10, 1);
+    // const page = Math.max(Number(query.page) || 1, 1);
+    // const limit = Math.max(Number(query.limit) || 10, 1);
     const search = query.search?.trim();
 
     const queryBuilder = this.sessionRepository
       .createQueryBuilder('session')
-      .leftJoinAndSelect('session.classEntity', 'classEntity')
-      .orderBy('session.id', 'DESC')
-      .skip((page - 1) * limit)
-      .take(limit);
+      .leftJoinAndSelect('session.classEntity', 'classEntity');
+    // .orderBy('session.id', 'DESC')
+    // .skip((page - 1) * limit)
+    // .take(limit);
 
     if (search) {
       queryBuilder.andWhere(
@@ -275,9 +289,9 @@ export class SessionsService {
       items,
       pagination: {
         total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        // page,
+        // limit,
+        // totalPages: Math.ceil(total / limit),
       },
     };
   }
@@ -460,6 +474,7 @@ export class SessionsService {
 
   private async applyGeneralRemainingAdjustments(
     consumedSessionDelta: Map<number, number>,
+    packageId: number,
     manager?: EntityManager,
   ): Promise<void> {
     const targetStudentIds = [...consumedSessionDelta.entries()]
@@ -470,44 +485,53 @@ export class SessionsService {
       return;
     }
 
-    const studentRemainingsRepository =
-      manager?.getRepository(StudentRemainings) ??
-      this.studentRemainingsRepository;
+    const enrollmentRepository =
+      manager?.getRepository(Enrollment) ?? this.enrollmentRepository;
 
-    const remainings = await studentRemainingsRepository.find({
-      where: { studentId: In(targetStudentIds) },
+    const enrollments = await enrollmentRepository.find({
+      where: {
+        studentId: In(targetStudentIds),
+        packageId,
+      },
     });
 
-    const remainingsMap = new Map(
-      remainings.map((item) => [item.studentId, item]),
+    const enrollmentsMap = new Map(
+      enrollments.map((item) => [item.studentId, item]),
     );
 
     for (const studentId of targetStudentIds) {
       const delta = consumedSessionDelta.get(studentId) ?? 0;
-      const existing = remainingsMap.get(studentId);
-      const currentRemaining = existing?.remainingSessions ?? 0;
-      const nextRemaining = currentRemaining - delta;
+      const existing = enrollmentsMap.get(studentId);
 
-      // if (nextRemaining < 0) {
-      //   throw new BadRequestException(
-      //     `Student ${studentId} does not have enough remaining sessions`,
-      //   );
-      // }
-
-      if (existing) {
-        existing.remainingSessions = nextRemaining;
-      } else {
-        remainingsMap.set(
-          studentId,
-          studentRemainingsRepository.create({
-            studentId,
-            remainingSessions: nextRemaining,
-          }),
+      if (!existing) {
+        throw new BadRequestException(
+          `Enrollment not found for student ${studentId} and package ${packageId}`,
         );
       }
+
+      const currentRemaining = existing.remainingSessions ?? 0;
+      const nextRemaining = currentRemaining - delta;
+
+      if (nextRemaining < 0) {
+        throw new BadRequestException(
+          `Student ${studentId} does not have enough remaining sessions in package ${packageId}`,
+        );
+      }
+
+      existing.remainingSessions = nextRemaining;
     }
 
-    await studentRemainingsRepository.save([...remainingsMap.values()]);
+    await enrollmentRepository.save([...enrollmentsMap.values()]);
+  }
+
+  private getGeneralClassPackageId(classEntity: Class): number {
+    if (!classEntity.packageId || classEntity.packageId < 1) {
+      throw new BadRequestException(
+        `Class ${classEntity.id} does not have a valid packageId for attendance deduction`,
+      );
+    }
+
+    return classEntity.packageId;
   }
 
   private isAttendanceConsumed(status: AttendanceStatus): boolean {

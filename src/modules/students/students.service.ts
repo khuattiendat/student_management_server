@@ -8,7 +8,7 @@ import { Brackets, EntityManager, In, Repository } from 'typeorm';
 import { Student } from '@/database/entities/student.entity';
 import { Branch } from '@/database/entities/branch.entity';
 import { Parent } from '@/database/entities/parent.entity';
-import { Package, PackageType } from '@/database/entities/package.entity';
+import { Package } from '@/database/entities/package.entity';
 import { Enrollment } from '@/database/entities/enrollment.entity';
 import {
   Attendance,
@@ -18,9 +18,9 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { QueryStudentDto } from './dto/query-student.dto';
 import { StudentParentDto } from './dto/student-parent.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
-import { StudentRemainings } from '@/database/entities/student_remainings.entity';
 import { RenewStudentCourseDto } from './dto/renew-student-course.dto';
 import { QueryStudentAttendanceDto } from './dto/query-student-attendance.dto';
+import { QueryStudentsByEnrollmentsDto } from './dto/query-students-by-enrollments.dto';
 
 @Injectable()
 export class StudentsService {
@@ -33,8 +33,8 @@ export class StudentsService {
     private readonly parentRepository: Repository<Parent>,
     @InjectRepository(Package)
     private readonly packageRepository: Repository<Package>,
-    @InjectRepository(StudentRemainings)
-    private readonly studentRemainingsRepository: Repository<StudentRemainings>,
+    @InjectRepository(Enrollment)
+    private readonly enrollmentRepository: Repository<Enrollment>,
     @InjectRepository(Attendance)
     private readonly attendanceRepository: Repository<Attendance>,
   ) {}
@@ -54,8 +54,7 @@ export class StudentsService {
           ? await this.ensureBranchExists(createStudentDto.branchId, manager)
           : null;
 
-      await this.ensurePackagesExist(normalizedPackageIds, manager);
-      const totalGeneralSessions = await this.calculateGeneralTotalSessions(
+      const packages = await this.ensurePackagesExist(
         normalizedPackageIds,
         manager,
       );
@@ -68,6 +67,11 @@ export class StudentsService {
       const studentRepository = manager.getRepository(Student);
       const student = studentRepository.create({
         name: createStudentDto.name,
+        addressDetail: createStudentDto.addressDetail,
+        provinceCode: createStudentDto.provinceCode,
+        wardCode: createStudentDto.wardCode,
+        provinceName: createStudentDto.provinceName,
+        wardName: createStudentDto.wardName,
         birthday: createStudentDto.birthday,
         phone: createStudentDto.phone,
         branchId: branch ? branch.id : null,
@@ -76,16 +80,7 @@ export class StudentsService {
       });
 
       const savedStudent = await studentRepository.save(student);
-      await this.syncEnrollments(
-        manager,
-        savedStudent.id,
-        normalizedPackageIds,
-      );
-      await this.syncStudentRemainings(
-        savedStudent.id,
-        totalGeneralSessions,
-        manager,
-      );
+      await this.syncEnrollments(manager, savedStudent.id, packages);
 
       const createdStudent = await this.findStudentEntityById(
         savedStudent.id,
@@ -106,6 +101,8 @@ export class StudentsService {
       .leftJoinAndSelect('student.parents', 'parent')
       .leftJoinAndSelect('student.enrollments', 'enrollment')
       .leftJoinAndSelect('enrollment.package', 'package')
+      .leftJoinAndSelect('student.classStudents', 'classStudents')
+      .leftJoinAndSelect('classStudents.classEntity', 'classEntity')
       .distinct(true)
       .orderBy('student.id', 'DESC')
       .skip((page - 1) * limit)
@@ -116,6 +113,7 @@ export class StudentsService {
         new Brackets((builder) => {
           builder
             .where('student.name LIKE :search', { search: `%${search}%` })
+            .where('student.address LIKE :search', { search: `%${search}%` })
             .orWhere('student.phone LIKE :search', { search: `%${search}%` })
             .orWhere('parent.name LIKE :search', { search: `%${search}%` })
             .orWhere('branch.name LIKE :search', { search: `%${search}%` })
@@ -164,6 +162,63 @@ export class StudentsService {
     return this.buildStudentProfile(student, sessionStats.get(student.id));
   }
 
+  async findByEnrollments(query: QueryStudentsByEnrollmentsDto) {
+    const branchId = Number(query.branchId);
+    if (!Number.isInteger(branchId) || branchId < 1) {
+      throw new BadRequestException('branchId must be a positive integer');
+    }
+
+    const packageIds = this.parsePackageIdsFromQuery(query.packageIds);
+    if (packageIds.length === 0) {
+      throw new BadRequestException(
+        'packageIds must contain at least one package id',
+      );
+    }
+
+    await Promise.all([
+      this.ensureBranchExists(branchId),
+      this.ensurePackagesExist(packageIds),
+    ]);
+
+    const search = query.search?.trim();
+
+    const queryBuilder = this.studentRepository
+      .createQueryBuilder('student')
+      .leftJoinAndSelect('student.branch', 'branch')
+      .leftJoinAndSelect('student.parents', 'parent')
+      .leftJoinAndSelect('student.enrollments', 'enrollment')
+      .leftJoinAndSelect('enrollment.package', 'package')
+      .where('student.branchId = :branchId', { branchId })
+      .andWhere('enrollment.packageId IN (:...packageIds)', { packageIds })
+      .distinct(true)
+      .orderBy('student.id', 'DESC');
+
+    if (search) {
+      queryBuilder.andWhere(
+        new Brackets((builder) => {
+          builder
+            .where('student.name LIKE :search', { search: `%${search}%` })
+            .orWhere('student.phone LIKE :search', { search: `%${search}%` })
+            .orWhere('package.name LIKE :search', { search: `%${search}%` });
+        }),
+      );
+    }
+
+    const items = await queryBuilder.getMany();
+    const sessionStats = await this.getStudentSessionStats(
+      items.map((student) => student.id),
+    );
+
+    return {
+      items: items.map((student) =>
+        this.buildStudentProfile(student, sessionStats.get(student.id)),
+      ),
+      total: items.length,
+      branchId,
+      packageIds,
+    };
+  }
+
   async findAttendances(studentId: number, query: QueryStudentAttendanceDto) {
     await this.findStudentEntityById(studentId);
 
@@ -176,7 +231,8 @@ export class StudentsService {
       .leftJoinAndSelect('session.classEntity', 'classEntity')
       .leftJoinAndSelect('classEntity.branch', 'branch')
       .leftJoinAndSelect('classEntity.teacher', 'teacher')
-      .leftJoinAndSelect('classEntity.package', 'package')
+      .leftJoinAndSelect('classEntity.classPackages', 'classPackages')
+      .leftJoinAndSelect('classPackages.package', 'package')
       .where('attendance.studentId = :studentId', { studentId })
       .orderBy('session.sessionDate', 'DESC')
       .addOrderBy('session.startTime', 'DESC')
@@ -203,8 +259,12 @@ export class StudentsService {
 
     const [items, total] = await queryBuilder.getManyAndCount();
 
+    const normalizedItems = items.map((attendance) =>
+      this.normalizeAttendanceResponse(attendance),
+    );
+
     return {
-      items,
+      items: normalizedItems,
       pagination: {
         total,
         page,
@@ -220,6 +280,21 @@ export class StudentsService {
 
       if (updateStudentDto.name !== undefined) {
         student.name = updateStudentDto.name;
+      }
+      if (updateStudentDto.addressDetail !== undefined) {
+        student.addressDetail = updateStudentDto.addressDetail;
+      }
+      if (updateStudentDto.provinceCode !== undefined) {
+        student.provinceCode = updateStudentDto.provinceCode;
+      }
+      if (updateStudentDto.wardCode !== undefined) {
+        student.wardCode = updateStudentDto.wardCode;
+      }
+      if (updateStudentDto.provinceName !== undefined) {
+        student.provinceName = updateStudentDto.provinceName;
+      }
+      if (updateStudentDto.wardName !== undefined) {
+        student.wardName = updateStudentDto.wardName;
       }
 
       if (updateStudentDto.phone !== undefined) {
@@ -270,18 +345,12 @@ export class StudentsService {
 
     return this.studentRepository.manager.transaction(async (manager) => {
       await this.findStudentEntityById(id, manager);
-      await this.ensurePackagesExist(normalizedPackageIds, manager);
-
-      await this.appendEnrollments(manager, id, normalizedPackageIds);
-
-      const additionalGeneralSessions =
-        await this.calculateGeneralTotalSessions(normalizedPackageIds, manager);
-
-      await this.incrementStudentRemainings(
-        id,
-        additionalGeneralSessions,
+      const packages = await this.ensurePackagesExist(
+        normalizedPackageIds,
         manager,
       );
+
+      await this.appendEnrollments(manager, id, packages);
 
       const updatedStudent = await this.findStudentEntityById(id, manager);
       return this.buildStudentProfile(updatedStudent);
@@ -290,7 +359,7 @@ export class StudentsService {
 
   async remove(id: number) {
     const student = await this.findStudentEntityById(id);
-    await this.studentRepository.remove(student);
+    await this.studentRepository.softRemove(student);
 
     return {
       message: 'Student deleted successfully',
@@ -342,19 +411,38 @@ export class StudentsService {
     return [...new Set(ids)];
   }
 
+  private parsePackageIdsFromQuery(packageIds: string | string[]): number[] {
+    const rawValues = Array.isArray(packageIds)
+      ? packageIds
+      : packageIds.split(',');
+
+    const normalized = rawValues
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0)
+      .map((value) => Number(value));
+
+    if (normalized.some((value) => !Number.isInteger(value) || value < 1)) {
+      throw new BadRequestException(
+        'packageIds must be a list of positive integers',
+      );
+    }
+
+    return [...new Set(normalized)];
+  }
+
   private async ensurePackagesExist(
     packageIds: number[],
     manager?: EntityManager,
-  ): Promise<void> {
+  ): Promise<Package[]> {
     if (packageIds.length === 0) {
-      return;
+      return [];
     }
 
     const packageRepository =
       manager?.getRepository(Package) ?? this.packageRepository;
     const packages = await packageRepository.find({
       where: { id: In(packageIds) },
-      select: ['id'],
+      select: ['id', 'totalSessions', 'name'],
     });
 
     const foundIds = new Set(packages.map((packageEntity) => packageEntity.id));
@@ -365,6 +453,8 @@ export class StudentsService {
         `Invalid packageIds: ${missingIds.join(', ')}`,
       );
     }
+
+    return packages;
   }
 
   private async resolveParents(
@@ -450,19 +540,20 @@ export class StudentsService {
   private async syncEnrollments(
     manager: EntityManager,
     studentId: number,
-    packageIds: number[],
+    packages: Package[],
   ): Promise<void> {
     const enrollmentRepository = manager.getRepository(Enrollment);
     await enrollmentRepository.delete({ studentId });
 
-    if (packageIds.length === 0) {
+    if (packages.length === 0) {
       return;
     }
 
-    const enrollments = packageIds.map((packageId) =>
+    const enrollments = packages.map((packageEntity) =>
       enrollmentRepository.create({
         studentId,
-        packageId,
+        packageId: packageEntity.id,
+        remainingSessions: Number(packageEntity.totalSessions ?? 0),
       }),
     );
 
@@ -472,96 +563,45 @@ export class StudentsService {
   private async appendEnrollments(
     manager: EntityManager,
     studentId: number,
-    packageIds: number[],
+    packages: Package[],
   ): Promise<void> {
-    if (packageIds.length === 0) {
+    if (packages.length === 0) {
       return;
     }
 
     const enrollmentRepository = manager.getRepository(Enrollment);
-    const enrollments = packageIds.map((packageId) =>
-      enrollmentRepository.create({
+    const packageIds = packages.map((packageEntity) => packageEntity.id);
+    const existingEnrollments = await enrollmentRepository.find({
+      where: {
         studentId,
-        packageId,
-      }),
-    );
-
-    await enrollmentRepository.save(enrollments);
-  }
-
-  private async calculateGeneralTotalSessions(
-    packageIds: number[],
-    manager?: EntityManager,
-  ): Promise<number> {
-    if (packageIds.length === 0) {
-      return 0;
-    }
-
-    const packageRepository =
-      manager?.getRepository(Package) ?? this.packageRepository;
-
-    const rawTotal = await packageRepository
-      .createQueryBuilder('package')
-      .select('COALESCE(SUM(package.totalSessions), 0)', 'totalSessions')
-      .where('package.id IN (:...ids)', { ids: packageIds })
-      .andWhere('package.type = :type', { type: PackageType.GENERAL })
-      .getRawOne<{ totalSessions: string | number }>();
-
-    return Number(rawTotal?.totalSessions ?? 0);
-  }
-
-  private async syncStudentRemainings(
-    studentId: number,
-    remainingSessions: number,
-    manager?: EntityManager,
-  ): Promise<void> {
-    const studentRemainingsRepository =
-      manager?.getRepository(StudentRemainings) ??
-      this.studentRemainingsRepository;
-
-    await studentRemainingsRepository.delete({ studentId });
-
-    if (remainingSessions <= 0) {
-      return;
-    }
-
-    await studentRemainingsRepository.save(
-      studentRemainingsRepository.create({
-        studentId,
-        remainingSessions,
-      }),
-    );
-  }
-
-  private async incrementStudentRemainings(
-    studentId: number,
-    additionalSessions: number,
-    manager?: EntityManager,
-  ): Promise<void> {
-    if (additionalSessions <= 0) {
-      return;
-    }
-
-    const studentRemainingsRepository =
-      manager?.getRepository(StudentRemainings) ??
-      this.studentRemainingsRepository;
-
-    const studentRemainings = await studentRemainingsRepository.findOne({
-      where: { studentId },
+        packageId: In(packageIds),
+      },
     });
 
-    if (!studentRemainings) {
-      await studentRemainingsRepository.save(
-        studentRemainingsRepository.create({
-          studentId,
-          remainingSessions: additionalSessions,
-        }),
-      );
-      return;
-    }
+    const existingEnrollmentMap = new Map(
+      existingEnrollments.map((enrollment) => [
+        enrollment.packageId,
+        enrollment,
+      ]),
+    );
 
-    studentRemainings.remainingSessions += additionalSessions;
-    await studentRemainingsRepository.save(studentRemainings);
+    const enrollments = packages.map((packageEntity) => {
+      const packageSessions = Number(packageEntity.totalSessions ?? 0);
+      const existing = existingEnrollmentMap.get(packageEntity.id);
+
+      if (existing) {
+        existing.remainingSessions += packageSessions;
+        return existing;
+      }
+
+      return enrollmentRepository.create({
+        studentId,
+        packageId: packageEntity.id,
+        remainingSessions: packageSessions,
+      });
+    });
+
+    await enrollmentRepository.save(enrollments);
   }
 
   private async getStudentSessionStats(
@@ -589,15 +629,15 @@ export class StudentsService {
         })
         .groupBy('attendance.studentId')
         .getRawMany<{ studentId: string; learnedSessions: string }>(),
-      this.studentRemainingsRepository
-        .createQueryBuilder('studentRemaining')
-        .select('studentRemaining.studentId', 'studentId')
+      this.enrollmentRepository
+        .createQueryBuilder('enrollment')
+        .select('enrollment.studentId', 'studentId')
         .addSelect(
-          'COALESCE(SUM(studentRemaining.remainingSessions), 0)',
+          'COALESCE(SUM(enrollment.remainingSessions), 0)',
           'remainingSessions',
         )
-        .where('studentRemaining.studentId IN (:...studentIds)', { studentIds })
-        .groupBy('studentRemaining.studentId')
+        .where('enrollment.studentId IN (:...studentIds)', { studentIds })
+        .groupBy('enrollment.studentId')
         .getRawMany<{ studentId: string; remainingSessions: string }>(),
     ]);
 
@@ -635,18 +675,92 @@ export class StudentsService {
     student: Student,
     sessionStats?: { learnedSessions: number; remainingSessions: number },
   ) {
-    const packages = (student.enrollments ?? [])
+    const enrollments = student.enrollments ?? [];
+    const packages = enrollments
       .map((enrollment) => enrollment.package)
       .filter((packageEntity): packageEntity is Package =>
         Boolean(packageEntity),
       );
 
+    const remainingByPackage = enrollments
+      .filter((enrollment) => Boolean(enrollment.package))
+      .map((enrollment) => ({
+        packageId: enrollment.packageId,
+        packageName: enrollment.package?.name ?? null,
+        remainingSessions: Number(enrollment.remainingSessions ?? 0),
+      }));
+
     return {
       ...student,
       packageIds: packages.map((packageEntity) => packageEntity.id),
       packages,
+      remainingByPackage,
       learnedSessions: sessionStats?.learnedSessions ?? 0,
-      remainingSessions: sessionStats?.remainingSessions ?? 0,
+      remainingSessions:
+        remainingByPackage.reduce(
+          (sum, item) => sum + Number(item.remainingSessions ?? 0),
+          0,
+        ) ||
+        sessionStats?.remainingSessions ||
+        0,
     };
+  }
+
+  private normalizeAttendanceResponse(attendance: any) {
+    if (!attendance.session?.classEntity) {
+      return attendance;
+    }
+
+    const classEntity = attendance.session.classEntity;
+    const packages = (classEntity.classPackages ?? [])
+      .map((classPackage: any) => classPackage.package)
+      .filter((packageEntity: any): packageEntity is Package =>
+        Boolean(packageEntity),
+      );
+
+    const packageIds = packages.map((pkg: Package) => pkg.id);
+
+    const scheduleByWeekday = this.extractScheduleByWeekdayFromSessions([
+      attendance.session,
+    ]);
+
+    return {
+      ...attendance,
+      session: {
+        ...attendance.session,
+        classEntity: {
+          ...classEntity,
+          packages,
+          packageIds,
+          scheduleByWeekday,
+          classPackages: undefined,
+        },
+      },
+    };
+  }
+
+  private extractScheduleByWeekdayFromSessions(
+    sessions: any[],
+  ): Record<number, { startTime: string; endTime: string }> {
+    const scheduleByWeekday: Record<
+      number,
+      { startTime: string; endTime: string }
+    > = {};
+
+    sessions.forEach((session) => {
+      if (!session.sessionDate || !session.startTime || !session.endTime) {
+        return;
+      }
+
+      const weekday = new Date(session.sessionDate).getDay();
+      if (!scheduleByWeekday[weekday]) {
+        scheduleByWeekday[weekday] = {
+          startTime: session.startTime,
+          endTime: session.endTime,
+        };
+      }
+    });
+
+    return scheduleByWeekday;
   }
 }

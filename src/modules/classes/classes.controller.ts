@@ -18,6 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { UserRole } from '@/database/entities/user.entity';
+import { BaseQueryDto } from '@/common/base/base.QueryDto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.TEACHER)
@@ -34,6 +35,11 @@ export class ClassesController {
   @Get()
   findAll(@Query() query: QueryClassDto) {
     return this.classesService.findAll(query);
+  }
+
+  @Get('trash')
+  findAllTrash(@Query() query: BaseQueryDto) {
+    return this.classesService.findAllTrash(query);
   }
 
   @Get(':id')
@@ -54,5 +60,17 @@ export class ClassesController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.classesService.remove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Delete(':id/force')
+  forceRemove(@Param('id', ParseIntPipe) id: number) {
+    return this.classesService.forceRemove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Put(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number) {
+    return this.classesService.restore(id);
   }
 }

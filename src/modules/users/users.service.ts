@@ -10,6 +10,7 @@ import { User } from '@/database/entities/user.entity';
 import { Branch } from '@/database/entities/branch.entity';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { Class } from '@/database/entities/class.entity';
 
 @Injectable()
 export class UsersService {
@@ -115,13 +116,27 @@ export class UsersService {
   }
 
   async remove(id: number) {
-    const user = await this.findUserById(id);
-    await this.userRepository.remove(user);
+    return this.userRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const userRepository = transactionalEntityManager.getRepository(User);
+        const classRepository = transactionalEntityManager.getRepository(Class);
+        const user = await userRepository.findOne({
+          where: { id },
+        });
 
-    return {
-      message: 'User deleted successfully',
-      id,
-    };
+        if (!user) {
+          throw new NotFoundException(`User with id ${id} not found`);
+        }
+        await classRepository.update({ teacher: { id } }, { teacher: null });
+
+        await transactionalEntityManager.remove(user);
+
+        return {
+          message: 'User deleted successfully',
+          id,
+        };
+      },
+    );
   }
 
   private async findUserById(id: number) {

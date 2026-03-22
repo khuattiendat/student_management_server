@@ -12,9 +12,19 @@ import { Package, PackageType } from '@/database/entities/package.entity';
 import { Student } from '@/database/entities/student.entity';
 import { ClassStudent } from '@/database/entities/class_student.entity';
 import { Session } from '@/database/entities/session.entity';
+import { Attendance } from '@/database/entities/attendance.entity';
+import { ClassPackage } from '@/database/entities/class_packages.entity';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { QueryClassDto } from './dto/query-class.dto';
+import { BaseQueryDto } from '@/common/base/base.QueryDto';
+
+type WeekdaySchedule = {
+  startTime: string;
+  endTime: string;
+};
+
+type ScheduleByWeekday = Record<number, WeekdaySchedule>;
 
 @Injectable()
 export class ClassesService {
@@ -35,23 +45,45 @@ export class ClassesService {
 
   async create(createClassDto: CreateClassDto) {
     const studentIds = this.normalizeStudentIds(createClassDto.studentIds);
+    const packageIds = this.normalizePackageIds(createClassDto.packageIds);
 
     return this.classRepository.manager.transaction(async (manager) => {
-      const [branch, teacher, packageEntity] = await Promise.all([
+      const [branch, teacher] = await Promise.all([
         this.ensureBranchExists(createClassDto.branchId, manager),
         this.ensureTeacherExists(createClassDto.teacherId, manager),
-        this.ensurePackageExists(createClassDto.packageId, manager),
       ]);
 
-      const packageClassType = this.toClassType(packageEntity.type);
-      const classType = createClassDto.type ?? packageClassType;
-      this.ensureClassTypeMatchesPackageType(classType, packageClassType);
-      this.validateTimeRange(createClassDto.startTime, createClassDto.endTime);
+      const classType = createClassDto.type;
+      let selectedPackage: Package | null = null;
+
+      if (packageIds.length > 0) {
+        const packageEntities = await this.ensurePackagesExist(
+          packageIds,
+          manager,
+        );
+        // Validate all packages match class type
+        packageEntities.forEach((pkg) => {
+          const packageClassType = this.toClassType(pkg.type);
+          this.ensureClassTypeMatchesPackageType(classType, packageClassType);
+        });
+        // For CERTIFICATE type with multiple packages, select the one with max total_sessions
+        selectedPackage = this.selectSessionPackage(classType, packageEntities);
+      }
+
+      const normalizedWeekdays = this.normalizeWeekdays(
+        createClassDto.weekdays,
+      );
+      const scheduleByWeekday = this.normalizeScheduleByWeekday(
+        createClassDto.scheduleByWeekday,
+        normalizedWeekdays,
+      );
+
+      const defaultSchedule = scheduleByWeekday[normalizedWeekdays[0]];
 
       const {
         studentIds: _studentIds,
-        startTime,
-        endTime,
+        packageIds: _packageIds,
+        scheduleByWeekday: _scheduleByWeekday,
         startDate,
         ...classPayload
       } = createClassDto;
@@ -60,17 +92,30 @@ export class ClassesService {
       const classEntity = classRepository.create({
         ...classPayload,
         startDate: new Date(startDate),
-        startTime,
-        endTime,
+        weekdays: normalizedWeekdays,
+        startTime: defaultSchedule.startTime,
+        endTime: defaultSchedule.endTime,
         type: classType,
+        packageId: selectedPackage?.id ?? null,
         branch,
         teacher,
-        package: packageEntity,
+        scheduleByWeekday: this.toPersistedScheduleByWeekday(scheduleByWeekday),
       });
 
       const savedClass = await classRepository.save(classEntity);
 
-      await this.createSessionsForClass(savedClass, packageEntity, manager);
+      // Create ClassPackage relations
+      if (packageIds.length > 0) {
+        await this.syncClassPackages(manager, savedClass.id, packageIds);
+      }
+
+      // Create sessions based on selected package
+      await this.createSessionsForClass(
+        savedClass,
+        selectedPackage,
+        scheduleByWeekday,
+        manager,
+      );
 
       if (studentIds.length > 0) {
         await this.ensureStudentsExist(studentIds, manager);
@@ -94,7 +139,6 @@ export class ClassesService {
       .createQueryBuilder('class')
       .leftJoinAndSelect('class.branch', 'branch')
       .leftJoinAndSelect('class.teacher', 'teacher')
-      .leftJoinAndSelect('class.package', 'package')
       .orderBy('class.id', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -105,8 +149,7 @@ export class ClassesService {
           builder
             .where('class.name LIKE :search', { search: `%${search}%` })
             .orWhere('branch.name LIKE :search', { search: `%${search}%` })
-            .orWhere('teacher.name LIKE :search', { search: `%${search}%` })
-            .orWhere('package.name LIKE :search', { search: `%${search}%` });
+            .orWhere('teacher.name LIKE :search', { search: `%${search}%` });
         }),
       );
     }
@@ -138,7 +181,17 @@ export class ClassesService {
       if (!Number.isInteger(packageId) || packageId < 1) {
         throw new BadRequestException('packageId must be a positive integer');
       }
-      queryBuilder.andWhere('class.packageId = :packageId', { packageId });
+      queryBuilder.andWhere(
+        `EXISTS ${queryBuilder
+          .subQuery()
+          .select('1')
+          .from(ClassPackage, 'classPackage')
+          .where('classPackage.classId = class.id')
+          .andWhere('classPackage.packageId = :packageId')
+          .andWhere('classPackage.deletedAt IS NULL')
+          .getQuery()}`,
+        { packageId },
+      );
     }
 
     if (query.type) {
@@ -168,6 +221,31 @@ export class ClassesService {
       },
     };
   }
+  async findAllTrash(query: BaseQueryDto) {
+    const page = Math.max(Number(query.page) || 1, 1);
+    const limit = Math.max(Number(query.limit) || 10, 1);
+
+    const queryBuilder = this.classRepository
+      .createQueryBuilder('class')
+      .withDeleted()
+      .where('class.deletedAt IS NOT NULL')
+      .leftJoin('class.branch', 'branch')
+      .select(['class.id', 'class.name', 'class.deletedAt', 'branch.name'])
+      .orderBy('class.deletedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [items, total] = await queryBuilder.getManyAndCount();
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 
   async findOne(id: number) {
     const classEntity = await this.findClassWithRelations(id);
@@ -176,17 +254,29 @@ export class ClassesService {
 
   async update(id: number, updateClassDto: UpdateClassDto) {
     const classEntity = await this.findClassWithRelations(id);
-    const { studentIds, ...updatePayload } = updateClassDto;
+    const { studentIds, packageIds, scheduleByWeekday, ...updatePayload } =
+      updateClassDto;
     const scheduleRelevantChanged =
       updateClassDto.weekdays !== undefined ||
-      updateClassDto.startTime !== undefined ||
-      updateClassDto.endTime !== undefined ||
-      updateClassDto.packageId !== undefined ||
+      updateClassDto.scheduleByWeekday !== undefined ||
+      updateClassDto.packageIds !== undefined ||
       updateClassDto.type !== undefined;
     const normalizedStudentIds =
       studentIds === undefined
         ? undefined
         : this.normalizeStudentIds(studentIds);
+    const normalizedPackageIds =
+      packageIds === undefined
+        ? undefined
+        : this.normalizePackageIds(packageIds);
+
+    let effectivePackages =
+      classEntity.classPackages?.map((classPackage) => classPackage.package) ??
+      [];
+
+    if (normalizedPackageIds !== undefined) {
+      effectivePackages = await this.ensurePackagesExist(normalizedPackageIds);
+    }
 
     if (updateClassDto.branchId !== undefined) {
       classEntity.branch = await this.ensureBranchExists(
@@ -199,35 +289,34 @@ export class ClassesService {
         updateClassDto.teacherId,
       );
     }
-
-    let packageType: ClassType | undefined;
-    if (updateClassDto.packageId !== undefined) {
-      const packageEntity = await this.ensurePackageExists(
-        updateClassDto.packageId,
-      );
-      classEntity.package = packageEntity;
-      packageType = this.toClassType(packageEntity.type);
-    }
-
     const nextType = updateClassDto.type ?? classEntity.type;
-    const effectivePackageType =
-      packageType ??
-      (classEntity.package
-        ? this.toClassType(classEntity.package.type)
-        : undefined);
-    if (effectivePackageType) {
-      this.ensureClassTypeMatchesPackageType(nextType, effectivePackageType);
-    }
+    effectivePackages.forEach((pkg) => {
+      const packageClassType = this.toClassType(pkg.type);
+      this.ensureClassTypeMatchesPackageType(nextType, packageClassType);
+    });
+    const selectedPackage = this.selectSessionPackage(
+      nextType,
+      effectivePackages,
+    );
+    classEntity.packageId = selectedPackage?.id ?? null;
 
-    const nextStartTime = updateClassDto.startTime ?? classEntity.startTime;
-    const nextEndTime = updateClassDto.endTime ?? classEntity.endTime;
-    if (nextStartTime && nextEndTime) {
-      this.validateTimeRange(nextStartTime, nextEndTime);
-    } else if (scheduleRelevantChanged) {
-      throw new BadRequestException(
-        'Class startTime and endTime are required to regenerate schedule',
-      );
-    }
+    const nextWeekdays = this.normalizeWeekdays(
+      updateClassDto.weekdays ?? classEntity.weekdays,
+    );
+    const effectiveScheduleByWeekday = this.resolveScheduleByWeekdayForUpdate(
+      classEntity,
+      nextWeekdays,
+      scheduleByWeekday,
+      scheduleRelevantChanged,
+    );
+
+    const defaultSchedule = effectiveScheduleByWeekday[nextWeekdays[0]];
+    classEntity.startTime = defaultSchedule.startTime;
+    classEntity.endTime = defaultSchedule.endTime;
+    classEntity.weekdays = nextWeekdays;
+    classEntity.scheduleByWeekday = this.toPersistedScheduleByWeekday(
+      effectiveScheduleByWeekday,
+    );
 
     Object.assign(classEntity, updatePayload);
 
@@ -235,8 +324,17 @@ export class ClassesService {
       const classRepository = manager.getRepository(Class);
       await classRepository.save(classEntity);
 
+      if (normalizedPackageIds !== undefined) {
+        await this.syncClassPackages(manager, id, normalizedPackageIds);
+      }
+
       if (scheduleRelevantChanged) {
-        await this.regenerateFutureSessions(classEntity, manager);
+        await this.regenerateFutureSessions(
+          classEntity,
+          selectedPackage,
+          effectiveScheduleByWeekday,
+          manager,
+        );
       }
 
       if (normalizedStudentIds !== undefined) {
@@ -250,13 +348,121 @@ export class ClassesService {
   }
 
   async remove(id: number) {
-    const classEntity = await this.findOne(id);
-    await this.classRepository.remove(classEntity);
+    return this.classRepository.manager.transaction(async (manager) => {
+      const classEntity = await this.findClassWithRelations(id, manager);
+      const classRepository = manager.getRepository(Class);
+      const sessionRepository = manager.getRepository(Session);
+      const classStudentRepository = manager.getRepository(ClassStudent);
+      const classPackageRepository = manager.getRepository(ClassPackage);
+      const attendanceRepository = manager.getRepository(Attendance);
 
-    return {
-      message: 'Class deleted successfully',
-      id,
-    };
+      const sessions = await sessionRepository.find({
+        where: { classId: id },
+        select: ['id'],
+      });
+      const sessionIds = sessions.map((session) => session.id);
+
+      await classStudentRepository.softDelete({ classId: id });
+      await classPackageRepository.softDelete({ classId: id });
+
+      if (sessionIds.length > 0) {
+        await attendanceRepository.softDelete({
+          sessionId: In(sessionIds),
+        });
+      }
+
+      await sessionRepository.softDelete({ classId: id });
+      await classRepository.softRemove(classEntity);
+
+      return {
+        message: 'Class deleted successfully',
+        id,
+      };
+    });
+  }
+
+  async forceRemove(id: number) {
+    return this.classRepository.manager.transaction(async (manager) => {
+      const classRepository = manager.getRepository(Class);
+      const sessionRepository = manager.getRepository(Session);
+      const classStudentRepository = manager.getRepository(ClassStudent);
+      const classPackageRepository = manager.getRepository(ClassPackage);
+      const attendanceRepository = manager.getRepository(Attendance);
+
+      const sessions = await sessionRepository.find({
+        where: { classId: id },
+        withDeleted: true,
+        select: ['id'],
+      });
+      const sessionIds = sessions.map((session) => session.id);
+
+      await classStudentRepository.delete({ classId: id });
+      await classPackageRepository.delete({ classId: id });
+
+      if (sessionIds.length > 0) {
+        await attendanceRepository.delete({
+          sessionId: In(sessionIds),
+        });
+      }
+
+      await sessionRepository.delete({ classId: id });
+      await classRepository.delete(id);
+
+      return {
+        message: 'Class permanently deleted successfully',
+        id,
+      };
+    });
+  }
+
+  async restore(id: number) {
+    return this.classRepository.manager.transaction(async (manager) => {
+      const classRepository = manager.getRepository(Class);
+      const sessionRepository = manager.getRepository(Session);
+      const classStudentRepository = manager.getRepository(ClassStudent);
+      const classPackageRepository = manager.getRepository(ClassPackage);
+      const attendanceRepository = manager.getRepository(Attendance);
+
+      const classEntity = await classRepository.findOne({
+        where: { id },
+        withDeleted: true,
+      });
+
+      if (!classEntity) {
+        throw new NotFoundException(`Class with id ${id} not found`);
+      }
+
+      if (!classEntity.deletedAt) {
+        throw new BadRequestException(`Class with id ${id} is not deleted`);
+      }
+
+      // 👉 lấy sessionIds trước
+      const sessions = await sessionRepository.find({
+        where: { classId: id },
+        withDeleted: true,
+        select: ['id'],
+      });
+
+      const sessionIds = sessions.map((s) => s.id);
+
+      await Promise.all([
+        classRepository.restore(id),
+        classStudentRepository.restore({ classId: id }),
+        classPackageRepository.restore({ classId: id }),
+        sessionRepository.restore({ classId: id }),
+      ]);
+
+      if (sessionIds.length > 0) {
+        await attendanceRepository.restore({
+          sessionId: In(sessionIds),
+        });
+      }
+
+      return {
+        message: 'Class restored successfully',
+        id,
+      };
+    });
   }
 
   private async ensureBranchExists(
@@ -328,6 +534,8 @@ export class ClassesService {
         return ClassType.CERTIFICATE;
       case PackageType.GENERAL:
         return ClassType.GENERAL;
+      case PackageType.SCHOOL_SUBJECT:
+        return ClassType.SCHOOL_SUBJECT;
       default:
         throw new BadRequestException(
           `Unsupported package type: ${packageType}`,
@@ -341,6 +549,83 @@ export class ClassesService {
     }
 
     return [...new Set(studentIds)];
+  }
+
+  private normalizePackageIds(packageIds?: number[]): number[] {
+    if (!packageIds || packageIds.length === 0) {
+      return [];
+    }
+
+    return [...new Set(packageIds)];
+  }
+
+  private async ensurePackagesExist(
+    packageIds: number[],
+    manager?: EntityManager,
+  ): Promise<Package[]> {
+    if (packageIds.length === 0) {
+      return [];
+    }
+
+    const packageRepository =
+      manager?.getRepository(Package) ?? this.packageRepository;
+    const packages = await packageRepository.find({
+      where: { id: In(packageIds) },
+    });
+
+    const foundIds = new Set(packages.map((pkg) => pkg.id));
+    const missingIds = packageIds.filter((id) => !foundIds.has(id));
+    if (missingIds.length > 0) {
+      throw new BadRequestException(
+        `Invalid packageIds: ${missingIds.join(', ')}`,
+      );
+    }
+
+    return packages;
+  }
+
+  private selectSessionPackage(
+    classType: ClassType,
+    packages: Package[],
+  ): Package | null {
+    if (packages.length === 0) {
+      return null;
+    }
+
+    // For CERTIFICATE type, select package with max total_sessions
+    if (classType === ClassType.CERTIFICATE) {
+      return packages.reduce((max, pkg) => {
+        const maxSessions = Number(max.totalSessions ?? 0);
+        const pkgSessions = Number(pkg.totalSessions ?? 0);
+        return pkgSessions > maxSessions ? pkg : max;
+      });
+    }
+
+    // For other types, return any package (or null if creating 1-year schedule)
+    return packages[0] ?? null;
+  }
+
+  private async syncClassPackages(
+    manager: EntityManager,
+    classId: number,
+    packageIds: number[],
+  ): Promise<void> {
+    const classPackageRepository = manager.getRepository(ClassPackage);
+
+    await classPackageRepository.delete({ classId });
+
+    if (packageIds.length === 0) {
+      return;
+    }
+
+    const records = packageIds.map((packageId) =>
+      classPackageRepository.create({
+        classId,
+        packageId,
+      }),
+    );
+
+    await classPackageRepository.save(records);
   }
 
   private async ensureStudentsExist(
@@ -392,15 +677,10 @@ export class ClassesService {
 
   private async createSessionsForClass(
     classEntity: Class,
-    packageEntity: Package,
+    packageEntity: Package | null,
+    scheduleByWeekday: ScheduleByWeekday,
     manager: EntityManager,
   ): Promise<void> {
-    if (!classEntity.startTime || !classEntity.endTime) {
-      throw new BadRequestException('Class startTime and endTime are required');
-    }
-    const classStartTime = classEntity.startTime;
-    const classEndTime = classEntity.endTime;
-
     const sessionDates = this.generateSessionDates(classEntity, packageEntity);
 
     if (sessionDates.length === 0) {
@@ -408,37 +688,33 @@ export class ClassesService {
     }
 
     const sessionRepository = manager.getRepository(Session);
-    const sessions = sessionDates.map((sessionDate) => ({
-      classId: classEntity.id,
-      sessionDate,
-      startTime: classStartTime,
-      endTime: classEndTime,
-    }));
+    const sessions = sessionDates.map((sessionDate) => {
+      const schedule = scheduleByWeekday[sessionDate.getDay()];
+
+      if (!schedule) {
+        throw new BadRequestException(
+          `Missing schedule for weekday ${sessionDate.getDay()}`,
+        );
+      }
+
+      return {
+        classId: classEntity.id,
+        sessionDate,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+      };
+    });
 
     await sessionRepository.insert(sessions);
   }
 
   private async regenerateFutureSessions(
     classEntity: Class,
+    packageEntity: Package | null,
+    scheduleByWeekday: ScheduleByWeekday,
     manager: EntityManager,
   ): Promise<void> {
-    if (!classEntity.startTime || !classEntity.endTime) {
-      throw new BadRequestException('Class startTime and endTime are required');
-    }
-    const classStartTime = classEntity.startTime;
-    const classEndTime = classEntity.endTime;
-
     const sessionRepository = manager.getRepository(Session);
-    const packageRepository = manager.getRepository(Package);
-    const packageEntity = await packageRepository.findOne({
-      where: { id: classEntity.packageId },
-    });
-
-    if (!packageEntity) {
-      throw new BadRequestException(
-        `Invalid packageId: ${classEntity.packageId}`,
-      );
-    }
 
     const effectiveFrom = this.toStartOfDay(new Date());
     const effectiveFromDateOnly = this.toDateOnlyString(effectiveFrom);
@@ -472,19 +748,218 @@ export class ClassesService {
       return;
     }
 
-    const newFutureSessions = newFutureDates.map((sessionDate) => ({
-      classId: classEntity.id,
-      sessionDate,
-      startTime: classStartTime,
-      endTime: classEndTime,
-    }));
+    const newFutureSessions = newFutureDates.map((sessionDate) => {
+      const schedule = scheduleByWeekday[sessionDate.getDay()];
+
+      if (!schedule) {
+        throw new BadRequestException(
+          `Missing schedule for weekday ${sessionDate.getDay()}`,
+        );
+      }
+
+      return {
+        classId: classEntity.id,
+        sessionDate,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+      };
+    });
 
     await sessionRepository.insert(newFutureSessions);
   }
 
+  private normalizeWeekdays(weekdays: number[]): number[] {
+    const normalized = [...new Set(weekdays)].sort((a, b) => a - b);
+
+    if (normalized.length === 0) {
+      throw new BadRequestException('weekdays must contain at least one day');
+    }
+
+    if (
+      normalized.some((day) => !Number.isInteger(day) || day < 0 || day > 6)
+    ) {
+      throw new BadRequestException(
+        'weekdays must only contain values from 0 to 6',
+      );
+    }
+
+    return normalized;
+  }
+
+  private normalizeScheduleByWeekday(
+    scheduleByWeekdayInput: Record<
+      string,
+      { startTime: string; endTime: string }
+    >,
+    weekdays: number[],
+  ): ScheduleByWeekday {
+    if (!scheduleByWeekdayInput || typeof scheduleByWeekdayInput !== 'object') {
+      throw new BadRequestException('scheduleByWeekday is required');
+    }
+
+    const normalizedSchedule: Partial<ScheduleByWeekday> = {};
+
+    Object.entries(scheduleByWeekdayInput).forEach(([weekdayKey, schedule]) => {
+      const weekday = Number(weekdayKey);
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        throw new BadRequestException(
+          `scheduleByWeekday has invalid weekday key: ${weekdayKey}`,
+        );
+      }
+
+      if (!schedule || typeof schedule !== 'object') {
+        throw new BadRequestException(
+          `scheduleByWeekday[${weekday}] must be an object`,
+        );
+      }
+
+      const startTime = schedule.startTime?.trim();
+      const endTime = schedule.endTime?.trim();
+
+      if (!startTime || !endTime) {
+        throw new BadRequestException(
+          `scheduleByWeekday[${weekday}] requires startTime and endTime`,
+        );
+      }
+
+      this.validateMilitaryTime(
+        startTime,
+        `scheduleByWeekday[${weekday}].startTime`,
+      );
+      this.validateMilitaryTime(
+        endTime,
+        `scheduleByWeekday[${weekday}].endTime`,
+      );
+      this.validateTimeRange(startTime, endTime);
+
+      normalizedSchedule[weekday] = {
+        startTime,
+        endTime,
+      };
+    });
+
+    weekdays.forEach((weekday) => {
+      if (!normalizedSchedule[weekday]) {
+        throw new BadRequestException(
+          `scheduleByWeekday is missing schedule for weekday ${weekday}`,
+        );
+      }
+    });
+
+    return normalizedSchedule as ScheduleByWeekday;
+  }
+
+  private toPersistedScheduleByWeekday(
+    scheduleByWeekday: ScheduleByWeekday,
+  ): Record<string, { startTime: string; endTime: string }> {
+    const persistedSchedule: Record<
+      string,
+      { startTime: string; endTime: string }
+    > = {};
+
+    Object.entries(scheduleByWeekday).forEach(([weekday, schedule]) => {
+      persistedSchedule[String(weekday)] = {
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+      };
+    });
+
+    return persistedSchedule;
+  }
+
+  private resolveScheduleByWeekdayForUpdate(
+    classEntity: Class,
+    weekdays: number[],
+    scheduleByWeekdayInput:
+      | Record<string, { startTime: string; endTime: string }>
+      | undefined,
+    scheduleRelevantChanged: boolean,
+  ): ScheduleByWeekday {
+    if (scheduleByWeekdayInput) {
+      return this.normalizeScheduleByWeekday(scheduleByWeekdayInput, weekdays);
+    }
+
+    const scheduleFromExistingSessions = this.extractScheduleFromSessions(
+      classEntity.sessions ?? [],
+      weekdays,
+    );
+
+    const missingWeekdays = weekdays.filter(
+      (weekday) => !scheduleFromExistingSessions[weekday],
+    );
+
+    if (missingWeekdays.length > 0) {
+      if (scheduleRelevantChanged) {
+        throw new BadRequestException(
+          `scheduleByWeekday is required for weekdays: ${missingWeekdays.join(', ')}`,
+        );
+      }
+
+      const fallbackStartTime = classEntity.startTime;
+      const fallbackEndTime = classEntity.endTime;
+      if (!fallbackStartTime || !fallbackEndTime) {
+        throw new BadRequestException('scheduleByWeekday is required');
+      }
+
+      this.validateMilitaryTime(fallbackStartTime, 'startTime');
+      this.validateMilitaryTime(fallbackEndTime, 'endTime');
+      this.validateTimeRange(fallbackStartTime, fallbackEndTime);
+
+      missingWeekdays.forEach((weekday) => {
+        scheduleFromExistingSessions[weekday] = {
+          startTime: fallbackStartTime,
+          endTime: fallbackEndTime,
+        };
+      });
+    }
+
+    return scheduleFromExistingSessions;
+  }
+
+  private extractScheduleFromSessions(
+    sessions: Session[],
+    weekdays: number[],
+  ): ScheduleByWeekday {
+    const scheduleByWeekday: Partial<ScheduleByWeekday> = {};
+    const sortedSessions = [...sessions].sort((a, b) => {
+      const dateDiff =
+        new Date(a.sessionDate).getTime() - new Date(b.sessionDate).getTime();
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+
+      return a.startTime.localeCompare(b.startTime);
+    });
+
+    sortedSessions.forEach((session) => {
+      const weekday = new Date(session.sessionDate).getDay();
+      if (scheduleByWeekday[weekday]) {
+        return;
+      }
+
+      if (!session.startTime || !session.endTime) {
+        return;
+      }
+
+      scheduleByWeekday[weekday] = {
+        startTime: session.startTime,
+        endTime: session.endTime,
+      };
+    });
+
+    const resolved: Partial<ScheduleByWeekday> = {};
+    weekdays.forEach((weekday) => {
+      if (scheduleByWeekday[weekday]) {
+        resolved[weekday] = scheduleByWeekday[weekday];
+      }
+    });
+
+    return resolved as ScheduleByWeekday;
+  }
+
   private generateFutureSessionDates(
     classEntity: Class,
-    packageEntity: Package,
+    packageEntity: Package | null,
     effectiveFrom: Date,
     preservedPastSessionCount: number,
   ): Date[] {
@@ -497,7 +972,7 @@ export class ClassesService {
       throw new BadRequestException('weekdays must contain at least one day');
     }
 
-    if (classEntity.type === ClassType.CERTIFICATE) {
+    if (classEntity.type === ClassType.CERTIFICATE && packageEntity) {
       const totalSessions = Number(packageEntity.totalSessions ?? 0);
       if (!Number.isInteger(totalSessions) || totalSessions <= 0) {
         throw new BadRequestException(
@@ -532,7 +1007,7 @@ export class ClassesService {
 
   private generateSessionDates(
     classEntity: Class,
-    packageEntity: Package,
+    packageEntity: Package | null,
   ): Date[] {
     const weekdays = [...new Set(classEntity.weekdays)].sort((a, b) => a - b);
 
@@ -542,7 +1017,7 @@ export class ClassesService {
 
     const startDate = this.toStartOfDay(classEntity.startDate);
 
-    if (classEntity.type === ClassType.CERTIFICATE) {
+    if (classEntity.type === ClassType.CERTIFICATE && packageEntity) {
       const totalSessions = Number(packageEntity.totalSessions ?? 0);
       if (!Number.isInteger(totalSessions) || totalSessions <= 0) {
         throw new BadRequestException(
@@ -652,6 +1127,13 @@ export class ClassesService {
     }
   }
 
+  private validateMilitaryTime(value: string, fieldName: string): void {
+    const regex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!regex.test(value)) {
+      throw new BadRequestException(`${fieldName} must be in HH:mm format`);
+    }
+  }
+
   private parseTimeToMinutes(time: string): number {
     const [hourStr, minuteStr] = time.split(':');
     const hour = Number(hourStr);
@@ -671,7 +1153,8 @@ export class ClassesService {
       relations: [
         'branch',
         'teacher',
-        'package',
+        'classPackages',
+        'classPackages.package',
         'sessions',
         'classStudents',
         'classStudents.student',
@@ -691,7 +1174,8 @@ export class ClassesService {
       relations: [
         'branch',
         'teacher',
-        'package',
+        'classPackages',
+        'classPackages.package',
         'sessions',
         'classStudents',
         'classStudents.student',
@@ -699,14 +1183,41 @@ export class ClassesService {
     });
   }
 
-  private toClassResponse(classEntity: Class): Class & { students: Student[] } {
+  private toClassResponse(classEntity: Class): Omit<
+    Class,
+    'classStudents' | 'classPackages' | 'sessions'
+  > & {
+    students: Student[];
+    studentIds: number[];
+    packages: Package[];
+    packageIds: number[];
+  } {
     const students = (classEntity.classStudents ?? [])
       .map((classStudent) => classStudent.student)
       .filter((student): student is Student => Boolean(student));
 
+    const packages = (classEntity.classPackages ?? [])
+      .map((classPackage) => classPackage.package)
+      .filter((packageEntity): packageEntity is Package =>
+        Boolean(packageEntity),
+      );
+
+    const studentIds = students.map((student) => student.id);
+    const packageIds = packages.map((packageEntity) => packageEntity.id);
+
+    const {
+      classStudents: _classStudents,
+      classPackages: _classPackages,
+      sessions: _sessions,
+      ...classData
+    } = classEntity;
+
     return {
-      ...classEntity,
+      ...classData,
       students,
+      studentIds,
+      packages,
+      packageIds,
     };
   }
 }

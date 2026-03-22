@@ -16,6 +16,7 @@ import { UpdateStudentDto } from './dto/update-student.dto';
 import { QueryStudentDto } from './dto/query-student.dto';
 import { RenewStudentCourseDto } from './dto/renew-student-course.dto';
 import { QueryStudentAttendanceDto } from './dto/query-student-attendance.dto';
+import { QueryStudentsByEnrollmentsDto } from './dto/query-students-by-enrollments.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -36,6 +37,11 @@ export class StudentsController {
   @Get()
   findAll(@Query() query: QueryStudentDto) {
     return this.studentsService.findAll(query);
+  }
+
+  @Get('by-enrollments')
+  findByEnrollments(@Query() query: QueryStudentsByEnrollmentsDto) {
+    return this.studentsService.findByEnrollments(query);
   }
 
   @Get(':id')

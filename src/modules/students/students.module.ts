@@ -8,7 +8,6 @@ import { Enrollment } from '@/database/entities/enrollment.entity';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 import { AuthModule } from '../auth/auth.module';
-import { StudentRemainings } from '@/database/entities/student_remainings.entity';
 import { Attendance } from '@/database/entities/attendance.entity';
 
 @Module({
@@ -19,7 +18,6 @@ import { Attendance } from '@/database/entities/attendance.entity';
       Branch,
       Package,
       Enrollment,
-      StudentRemainings,
       Attendance,
     ]),
     AuthModule,

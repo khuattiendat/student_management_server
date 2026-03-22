@@ -24,6 +24,9 @@ export class Session extends BaseEntity {
   @JoinColumn({ name: 'class_id' })
   classEntity: Class;
 
-  @OneToMany(() => Attendance, (attendance) => attendance.session)
+  @OneToMany(() => Attendance, (attendance) => attendance.session, {
+    cascade: true,
+    onDelete: 'CASCADE',
+  })
   attendances: Attendance[];
 }
