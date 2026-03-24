@@ -27,9 +27,6 @@ export class Branch extends BaseEntity {
   })
   phone: string;
 
-  @OneToMany(() => User, (user) => user.branch)
-  users: User[];
-
   @ManyToMany(() => User, (user) => user.branches)
   managedUsers: User[];
 

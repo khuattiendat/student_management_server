@@ -5,6 +5,8 @@ import { Package } from '@/database/entities/package.entity';
 import { CreatePackageDto } from './dto/create-package.dto';
 import { UpdatePackageDto } from './dto/update-package.dto';
 import { QueryPackageDto } from './dto/query-package.dto';
+import { ClassPackage } from '@/database/entities/class_packages.entity';
+import { Enrollment } from '@/database/entities/enrollment.entity';
 
 @Injectable()
 export class PackagesService {
@@ -74,12 +76,28 @@ export class PackagesService {
   }
 
   async remove(id: number) {
-    const packageEntity = await this.findOne(id);
-    await this.packageRepository.remove(packageEntity);
+    return this.packageRepository.manager.transaction(async (manager) => {
+      const packageRepo = manager.getRepository(Package);
+      const classPackageRepo = manager.getRepository(ClassPackage);
+      const enrollmentRepo = manager.getRepository(Enrollment);
 
-    return {
-      message: 'Package deleted successfully',
-      id,
-    };
+      const pkg = await packageRepo.findOne({
+        where: { id },
+      });
+
+      if (!pkg) {
+        throw new Error('Package not found');
+      }
+
+      await classPackageRepo.delete({ packageId: id });
+      await enrollmentRepo.delete({ packageId: id });
+
+      await packageRepo.delete(id);
+
+      return {
+        message: 'Package deleted successfully',
+        id,
+      };
+    });
   }
 }

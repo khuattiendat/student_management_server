@@ -8,4 +8,8 @@ export class QuerySessionDto extends BaseQueryDto {
   @IsOptional()
   @IsDateString()
   sessionDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
 }

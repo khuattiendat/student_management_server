@@ -18,6 +18,7 @@ import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { QueryClassDto } from './dto/query-class.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 
 type WeekdaySchedule = {
   startTime: string;
@@ -130,10 +131,11 @@ export class ClassesService {
     });
   }
 
-  async findAll(query: QueryClassDto) {
+  async findAll(query: QueryClassDto, user: AuthenticatedUser) {
     const page = Math.max(Number(query.page) || 1, 1);
     const limit = Math.max(Number(query.limit) || 10, 1);
     const search = query.search?.trim();
+    const isTeacher = user.role === UserRole.TEACHER;
 
     const queryBuilder = this.classRepository
       .createQueryBuilder('class')
@@ -142,6 +144,12 @@ export class ClassesService {
       .orderBy('class.id', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
+
+    if (isTeacher) {
+      queryBuilder.where('class.teacherId = :teacherId', {
+        teacherId: user.sub,
+      });
+    }
 
     if (search) {
       queryBuilder.andWhere(

@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, EntityManager, In, Repository } from 'typeorm';
-import * as XLSX from 'xlsx';
 import { Session } from '@/database/entities/session.entity';
 import { Class, ClassType } from '@/database/entities/class.entity';
 import {
@@ -17,32 +16,14 @@ import { Enrollment } from '@/database/entities/enrollment.entity';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { UpdateSessionDto } from './dto/update-session.dto';
 import { QuerySessionDto } from './dto/query-session.dto';
+import { QueryCalendarSessionDto } from './dto/query-calendar-session.dto';
 import {
   AttendanceStudentItemDto,
   BulkAttendanceDto,
 } from './dto/bulk-attendance.dto';
-
-type SessionImportPayload = {
-  classId: number;
-  sessionDate: Date;
-  startTime: string;
-  endTime: string;
-};
-
-type SessionImportError = {
-  row: number;
-  field: string;
-  message: string;
-};
-
-const IMPORT_MAX_ROWS = 5000;
-const MAX_ERROR_PREVIEW = 50;
-const HEADER_ALIASES = {
-  classId: ['classId', 'class_id'],
-  sessionDate: ['sessionDate', 'session_date', 'date'],
-  startTime: ['startTime', 'start_time'],
-  endTime: ['endTime', 'end_time'],
-} as const;
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UserRole } from '@/database/entities/user.entity';
+import { TeacherCode } from '@/database/entities/teacherCode.entity';
 
 @Injectable()
 export class SessionsService {
@@ -57,6 +38,8 @@ export class SessionsService {
     private readonly classStudentRepository: Repository<ClassStudent>,
     @InjectRepository(Enrollment)
     private readonly enrollmentRepository: Repository<Enrollment>,
+    @InjectRepository(TeacherCode)
+    private readonly teacherCodeRepository: Repository<TeacherCode>,
   ) {}
 
   async takeAttendance(
@@ -90,14 +73,14 @@ export class SessionsService {
         session.classEntity.type === ClassType.GENERAL ||
         session.classEntity.type === ClassType.SCHOOL_SUBJECT
       ) {
-        const packageId = this.getGeneralClassPackageId(session.classEntity);
+        const packageIds = this.getGeneralClassPackageIds(session.classEntity);
         consumedSessionDelta = this.calculateGeneralConsumedSessionDelta(
           normalizedAttendances,
           existingAttendanceMap,
         );
         await this.applyGeneralRemainingAdjustments(
           consumedSessionDelta,
-          packageId,
+          packageIds,
           manager,
         );
       }
@@ -175,7 +158,7 @@ export class SessionsService {
         session.classEntity.type === ClassType.GENERAL ||
         session.classEntity.type === ClassType.SCHOOL_SUBJECT
       ) {
-        const packageId = this.getGeneralClassPackageId(session.classEntity);
+        const packageIds = this.getGeneralClassPackageIds(session.classEntity);
         const affectedStudentIds = [
           ...new Set([
             ...existingAttendanceMap.keys(),
@@ -203,7 +186,7 @@ export class SessionsService {
 
         await this.applyGeneralRemainingAdjustments(
           deltaMap,
-          packageId,
+          packageIds,
           manager,
         );
       }
@@ -226,7 +209,19 @@ export class SessionsService {
     });
   }
 
-  async create(createSessionDto: CreateSessionDto) {
+  async create(createSessionDto: CreateSessionDto, user: AuthenticatedUser) {
+    const { code } = createSessionDto;
+    const { role, sub: teacherId } = user;
+
+    if (role === UserRole.TEACHER) {
+      if (!code) {
+        throw new BadRequestException(
+          'Code is required for teacher to create session',
+        );
+      }
+      const teacherCode = await this.codeValidation(teacherId, code);
+      await this.updateIsUsedTeacherCode(teacherCode);
+    }
     await this.ensureClassExists(createSessionDto.classId);
     this.validateTimeRange(
       createSessionDto.startTime,
@@ -240,76 +235,22 @@ export class SessionsService {
 
     return this.sessionRepository.save(session);
   }
-
-  async findAll(query: QuerySessionDto) {
-    // const page = Math.max(Number(query.page) || 1, 1);
-    // const limit = Math.max(Number(query.limit) || 10, 1);
-    const search = query.search?.trim();
-
-    const queryBuilder = this.sessionRepository
-      .createQueryBuilder('session')
-      .leftJoinAndSelect('session.classEntity', 'classEntity');
-    // .orderBy('session.id', 'DESC')
-    // .skip((page - 1) * limit)
-    // .take(limit);
-
-    if (search) {
-      queryBuilder.andWhere(
-        new Brackets((builder) => {
-          builder
-            .where('classEntity.name LIKE :search', { search: `%${search}%` })
-            .orWhere('session.startTime LIKE :search', {
-              search: `%${search}%`,
-            })
-            .orWhere('session.endTime LIKE :search', { search: `%${search}%` })
-            .orWhere('session.sessionDate LIKE :search', {
-              search: `%${search}%`,
-            });
-        }),
-      );
-    }
-
-    if (query.classId) {
-      const classId = Number(query.classId);
-      if (!Number.isInteger(classId) || classId < 1) {
-        throw new BadRequestException('classId must be a positive integer');
+  async update(
+    id: number,
+    updateSessionDto: UpdateSessionDto,
+    user: AuthenticatedUser,
+  ) {
+    const { code } = updateSessionDto;
+    const { role, sub: teacherId } = user;
+    if (role === UserRole.TEACHER) {
+      if (!code) {
+        throw new BadRequestException(
+          'Code is required for teacher to create session',
+        );
       }
-      queryBuilder.andWhere('session.classId = :classId', { classId });
+      const teacherCode = await this.codeValidation(teacherId, code);
+      await this.updateIsUsedTeacherCode(teacherCode);
     }
-
-    if (query.sessionDate) {
-      queryBuilder.andWhere('session.sessionDate = :sessionDate', {
-        sessionDate: query.sessionDate,
-      });
-    }
-
-    const [items, total] = await queryBuilder.getManyAndCount();
-
-    return {
-      items,
-      pagination: {
-        total,
-        // page,
-        // limit,
-        // totalPages: Math.ceil(total / limit),
-      },
-    };
-  }
-
-  async findOne(id: number) {
-    const session = await this.sessionRepository.findOne({
-      where: { id },
-      relations: ['classEntity'],
-    });
-
-    if (!session) {
-      throw new NotFoundException(`Session with id ${id} not found`);
-    }
-
-    return session;
-  }
-
-  async update(id: number, updateSessionDto: UpdateSessionDto) {
     const session = await this.findOne(id);
 
     if (updateSessionDto.classId !== undefined) {
@@ -330,15 +271,260 @@ export class SessionsService {
     return this.sessionRepository.save(session);
   }
 
-  async remove(id: number) {
+  async findAll(query: QuerySessionDto) {
+    const page = Math.max(Number(query.page) || 1, 1);
+    const limit = Math.max(Number(query.limit) || 10, 1);
+    const startDate = query.startDate;
+
+    const queryBuilder = this.sessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.classEntity', 'classEntity')
+      .select([
+        'session.id',
+        'session.sessionDate',
+        'session.startTime',
+        'session.endTime',
+        'classEntity.id',
+        'classEntity.name',
+      ])
+      .orderBy('session.sessionDate', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (query.classId) {
+      const classId = Number(query.classId);
+      if (!Number.isInteger(classId) || classId < 1) {
+        throw new BadRequestException('classId must be a positive integer');
+      }
+      queryBuilder.andWhere('session.classId = :classId', { classId });
+    }
+
+    if (query.sessionDate) {
+      queryBuilder.andWhere('session.sessionDate = :sessionDate', {
+        sessionDate: query.sessionDate,
+      });
+    }
+    if (startDate) {
+      queryBuilder.andWhere('session.sessionDate >= :startDate', {
+        startDate,
+      });
+    }
+
+    const [items, total] = await queryBuilder.getManyAndCount();
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findCalendar(query: QueryCalendarSessionDto, user: AuthenticatedUser) {
+    if (query.startDate && query.endDate) {
+      if (new Date(query.startDate) > new Date(query.endDate)) {
+        throw new BadRequestException(
+          'startDate must be before or equal to endDate',
+        );
+      }
+    }
+
+    const queryBuilder = this.sessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.classEntity', 'classEntity')
+      .leftJoinAndSelect('classEntity.branch', 'branch')
+      .leftJoinAndSelect('classEntity.teacher', 'teacher')
+      .where('classEntity.status != :activeStatus', {
+        activeStatus: 'completed',
+      })
+      .orderBy('session.sessionDate', 'ASC')
+      .addOrderBy('session.startTime', 'ASC');
+
+    if (user.role === UserRole.TEACHER) {
+      queryBuilder.andWhere('classEntity.teacherId = :teacherId', {
+        teacherId: user.sub,
+      });
+    }
+
+    if (query.branchId) {
+      const branchId = Number(query.branchId);
+      if (!Number.isInteger(branchId) || branchId < 1) {
+        throw new BadRequestException('branchId must be a positive integer');
+      }
+      queryBuilder.andWhere('branch.id = :branchId', { branchId });
+    }
+    const now = new Date();
+
+    // Lấy thứ hiện tại (0 = CN, 1 = T2, ..., 6 = T7)
+    const day = now.getDay();
+
+    // Điều chỉnh để tuần bắt đầu từ Thứ 2
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    // Ngày đầu tuần (Thứ 2)
+    const startDate = new Date(now);
+    startDate.setDate(now.getDate() + diffToMonday);
+    startDate.setHours(0, 0, 0, 0);
+
+    // Ngày cuối tuần (Chủ nhật)
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6);
+    endDate.setHours(23, 59, 59, 999);
+
+    if (query.startDate) {
+      queryBuilder.andWhere('session.sessionDate >= :startDate', {
+        startDate: query.startDate,
+      });
+    } else {
+      queryBuilder.andWhere('session.sessionDate >= :startDate', {
+        startDate: startDate,
+      });
+    }
+
+    if (query.endDate) {
+      queryBuilder.andWhere('session.sessionDate <= :endDate', {
+        endDate: query.endDate,
+      });
+    } else {
+      queryBuilder.andWhere('session.sessionDate <= :endDate', {
+        endDate: endDate,
+      });
+    }
+    const items = await queryBuilder.getMany();
+
+    return {
+      items: items.map((session) => {
+        const sessionDate = this.toDateOnlyString(session.sessionDate);
+
+        return {
+          id: session.id,
+          title: session.classEntity?.name ?? `Session ${session.id}`,
+          sessionDate,
+          startTime: session.startTime,
+          endTime: session.endTime,
+          start: `${sessionDate}T${session.startTime}`,
+          end: `${sessionDate}T${session.endTime}`,
+          class: {
+            id: session.classEntity?.id ?? null,
+            name: session.classEntity?.name ?? null,
+            status: session.classEntity?.status ?? null,
+            type: session.classEntity?.type ?? null,
+            roomName: session.classEntity?.roomName ?? null,
+            branch: session.classEntity?.branch
+              ? {
+                  id: session.classEntity.branch.id,
+                  name: session.classEntity.branch.name,
+                }
+              : null,
+            teacher: session.classEntity?.teacher
+              ? {
+                  id: session.classEntity.teacher.id,
+                  name: session.classEntity.teacher.name,
+                }
+              : null,
+          },
+        };
+      }),
+      total: items.length,
+    };
+  }
+
+  async findOne(id: number) {
+    const session = await this.sessionRepository.findOne({
+      where: { id },
+      relations: ['classEntity'],
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session with id ${id} not found`);
+    }
+
+    return session;
+  }
+
+  async remove(id: number, code: string, user: AuthenticatedUser) {
+    const { role, sub: teacherId } = user;
+
     const session = await this.findOne(id);
-    await this.sessionRepository.remove(session);
+
+    if (role == UserRole.ADMIN) {
+      await this.sessionRepository.delete(id);
+
+      return {
+        message: 'Session deleted successfully',
+        code,
+        id,
+      };
+    }
+
+    if (!code) {
+      throw new BadRequestException(
+        'Code is required for teacher to delete session',
+      );
+    }
+    const teacherCode = await this.codeValidation(teacherId, code);
+
+    if (role === UserRole.TEACHER) {
+      if (session.classEntity.teacherId !== teacherId) {
+        throw new BadRequestException(
+          'You do not have permission to delete this session',
+        );
+      }
+    }
+    if (session.classEntity.status === 'completed') {
+      throw new BadRequestException(
+        'Cannot delete session of a completed class',
+      );
+    }
+    this.sessionRepository.manager.transaction(async (manager) => {
+      const teacherCodeRepo = manager.getRepository(TeacherCode);
+      const sessionRepo = manager.getRepository(Session);
+      const attendanceRepo = manager.getRepository(Attendance);
+      teacherCode.isUsed = true;
+      await teacherCodeRepo.save(teacherCode);
+
+      await sessionRepo.delete(id);
+
+      await attendanceRepo.delete({ sessionId: id });
+    });
 
     return {
       message: 'Session deleted successfully',
+      code,
       id,
     };
   }
+
+  private async updateIsUsedTeacherCode(teacherCode: TeacherCode) {
+    teacherCode.isUsed = true;
+    await this.teacherCodeRepository.save(teacherCode);
+  }
+  private async codeValidation(
+    teacherId: number,
+    code: string,
+  ): Promise<TeacherCode> {
+    const teacherCode = await this.teacherCodeRepository.findOne({
+      where: {
+        teacherId,
+        code,
+      },
+    });
+
+    if (!teacherCode) {
+      throw new BadRequestException('Mã xác nhận không hợp lệ');
+    }
+    if (teacherCode.isUsed) {
+      throw new BadRequestException('Mã xác nhận đã được sử dụng');
+    }
+    if (teacherCode.expiresAt < new Date()) {
+      throw new BadRequestException('Mã xác nhận đã hết hạn');
+    }
+    return teacherCode;
+  }
+
   private async ensureClassExists(classId: number) {
     const classEntity = await this.classRepository.findOne({
       where: { id: classId },
@@ -358,7 +544,7 @@ export class SessionsService {
 
     const session = await sessionRepository.findOne({
       where: { id: sessionId },
-      relations: ['classEntity'],
+      relations: ['classEntity', 'classEntity.classPackages'],
     });
 
     if (!session) {
@@ -474,9 +660,16 @@ export class SessionsService {
 
   private async applyGeneralRemainingAdjustments(
     consumedSessionDelta: Map<number, number>,
-    packageId: number,
+    packageIds: number[],
     manager?: EntityManager,
   ): Promise<void> {
+    const uniquePackageIds = [...new Set(packageIds)];
+    if (uniquePackageIds.length === 0) {
+      throw new BadRequestException(
+        'Class does not have any package configured for attendance deduction',
+      );
+    }
+
     const targetStudentIds = [...consumedSessionDelta.entries()]
       .filter(([, delta]) => delta !== 0)
       .map(([studentId]) => studentId);
@@ -491,47 +684,92 @@ export class SessionsService {
     const enrollments = await enrollmentRepository.find({
       where: {
         studentId: In(targetStudentIds),
-        packageId,
+        packageId: In(uniquePackageIds),
+      },
+      order: {
+        studentId: 'ASC',
+        createdAt: 'ASC',
+        id: 'ASC',
       },
     });
 
-    const enrollmentsMap = new Map(
-      enrollments.map((item) => [item.studentId, item]),
-    );
+    const enrollmentsMap = new Map<number, Enrollment[]>();
+    enrollments.forEach((item) => {
+      const studentEnrollments = enrollmentsMap.get(item.studentId) ?? [];
+      studentEnrollments.push(item);
+      enrollmentsMap.set(item.studentId, studentEnrollments);
+    });
+
+    const updatedEnrollmentMap = new Map<number, Enrollment>();
 
     for (const studentId of targetStudentIds) {
       const delta = consumedSessionDelta.get(studentId) ?? 0;
-      const existing = enrollmentsMap.get(studentId);
+      const studentEnrollments = enrollmentsMap.get(studentId) ?? [];
 
-      if (!existing) {
+      if (studentEnrollments.length === 0) {
         throw new BadRequestException(
-          `Enrollment not found for student ${studentId} and package ${packageId}`,
+          `Enrollment not found for student ${studentId} and packages ${uniquePackageIds.join(', ')}`,
         );
       }
 
-      const currentRemaining = existing.remainingSessions ?? 0;
-      const nextRemaining = currentRemaining - delta;
+      const lastEnrollment = studentEnrollments[studentEnrollments.length - 1];
 
-      if (nextRemaining < 0) {
-        throw new BadRequestException(
-          `Student ${studentId} does not have enough remaining sessions in package ${packageId}`,
-        );
+      if (delta > 0) {
+        let remainingToDeduct = delta;
+
+        for (const enrollment of studentEnrollments) {
+          if (remainingToDeduct === 0) {
+            break;
+          }
+
+          const currentRemaining = enrollment.remainingSessions ?? 0;
+          if (currentRemaining <= 0) {
+            continue;
+          }
+
+          const deducted = Math.min(currentRemaining, remainingToDeduct);
+          enrollment.remainingSessions = currentRemaining - deducted;
+          remainingToDeduct -= deducted;
+          updatedEnrollmentMap.set(enrollment.id, enrollment);
+        }
+
+        if (remainingToDeduct > 0) {
+          const currentRemaining = lastEnrollment.remainingSessions ?? 0;
+          lastEnrollment.remainingSessions =
+            currentRemaining - remainingToDeduct;
+          updatedEnrollmentMap.set(lastEnrollment.id, lastEnrollment);
+        }
       }
 
-      existing.remainingSessions = nextRemaining;
+      if (delta < 0) {
+        const currentRemaining = lastEnrollment.remainingSessions ?? 0;
+        lastEnrollment.remainingSessions = currentRemaining + Math.abs(delta);
+        updatedEnrollmentMap.set(lastEnrollment.id, lastEnrollment);
+      }
     }
 
-    await enrollmentRepository.save([...enrollmentsMap.values()]);
+    if (updatedEnrollmentMap.size > 0) {
+      await enrollmentRepository.save([...updatedEnrollmentMap.values()]);
+    }
   }
 
-  private getGeneralClassPackageId(classEntity: Class): number {
+  private getGeneralClassPackageIds(classEntity: Class): number[] {
+    const classPackageIds =
+      classEntity.classPackages
+        ?.map((item) => item.packageId)
+        .filter((packageId) => packageId > 0) ?? [];
+
+    if (classPackageIds.length > 0) {
+      return [...new Set(classPackageIds)];
+    }
+
     if (!classEntity.packageId || classEntity.packageId < 1) {
       throw new BadRequestException(
-        `Class ${classEntity.id} does not have a valid packageId for attendance deduction`,
+        `Class ${classEntity.id} does not have valid packageIds for attendance deduction`,
       );
     }
 
-    return classEntity.packageId;
+    return [classEntity.packageId];
   }
 
   private isAttendanceConsumed(status: AttendanceStatus): boolean {
@@ -542,5 +780,12 @@ export class SessionsService {
     if (startTime >= endTime) {
       throw new BadRequestException('endTime must be greater than startTime');
     }
+  }
+
+  private toDateOnlyString(value: Date | string): string {
+    if (value instanceof Date) {
+      return value.toISOString().slice(0, 10);
+    }
+    return String(value).slice(0, 10);
   }
 }

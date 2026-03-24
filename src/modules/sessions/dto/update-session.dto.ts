@@ -23,4 +23,10 @@ export class UpdateSessionDto {
   @IsOptional()
   @IsMilitaryTime()
   endTime?: string;
+
+  @IsOptional()
+  code: string;
+
+  @IsOptional()
+  sessionId?: number;
 }

@@ -12,6 +12,7 @@ import { ClassesModule } from './modules/classes/classes.module';
 import { PackagesModule } from './modules/packages/packages.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { StudentsModule } from './modules/students/students.module';
+import { TeacherCodeModule } from './modules/teacher-code/teacher-code.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { StudentsModule } from './modules/students/students.module';
     PackagesModule,
     SessionsModule,
     StudentsModule,
+    TeacherCodeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

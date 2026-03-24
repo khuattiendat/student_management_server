@@ -8,6 +8,7 @@ import { Enrollment } from '@/database/entities/enrollment.entity';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { AuthModule } from '../auth/auth.module';
+import { TeacherCode } from '@/database/entities/teacherCode.entity';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module';
       Attendance,
       ClassStudent,
       Enrollment,
+      TeacherCode,
     ]),
     AuthModule,
   ],

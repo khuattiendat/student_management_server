@@ -38,6 +38,11 @@ export class BranchesController {
   findAll(@Query() query: BaseQueryDto) {
     return this.branchesService.findAll(query);
   }
+  @Roles(UserRole.ADMIN)
+  @Get('trash')
+  findAllTrash(@Query() query: BaseQueryDto) {
+    return this.branchesService.findAllTrash(query);
+  }
 
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
@@ -58,6 +63,19 @@ export class BranchesController {
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.branchesService.remove(id);
   }
+
+  @Roles(UserRole.ADMIN)
+  @Delete(':id/force')
+  forceRemove(@Param('id', ParseIntPipe) id: number) {
+    return this.branchesService.forceRemove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Put(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number) {
+    return this.branchesService.restore(id);
+  }
+
   @Get('classes/with-classes')
   findAllWithClasses(@CurrentUser() user: AuthenticatedUser) {
     return this.branchesService.findAllWithClasses(user);

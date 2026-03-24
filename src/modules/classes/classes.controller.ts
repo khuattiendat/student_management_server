@@ -19,6 +19,8 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { UserRole } from '@/database/entities/user.entity';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.TEACHER)
@@ -33,10 +35,14 @@ export class ClassesController {
   }
 
   @Get()
-  findAll(@Query() query: QueryClassDto) {
-    return this.classesService.findAll(query);
+  findAll(
+    @Query() query: QueryClassDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.classesService.findAll(query, user);
   }
 
+  @Roles(UserRole.ADMIN)
   @Get('trash')
   findAllTrash(@Query() query: BaseQueryDto) {
     return this.classesService.findAllTrash(query);

@@ -76,6 +76,12 @@ export class Student extends BaseEntity {
     length: 20,
   })
   phone: string;
+  @Column({
+    name: 'deletedBy_branch_id',
+    nullable: true,
+    type: 'int',
+  })
+  deletedByBranchId: number | null;
 
   @ManyToOne(() => Branch, (branch) => branch.students, {
     nullable: true,

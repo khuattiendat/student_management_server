@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Branch } from './branch.entity';
 import { Class } from './class.entity';
+import { TeacherCode } from './teacherCode.entity';
 export enum UserRole {
   ADMIN = 'admin',
   TEACHER = 'teacher',
@@ -61,12 +62,6 @@ export class User extends BaseEntity {
   })
   status: UserStatus;
 
-  @ManyToOne(() => Branch, (branch) => branch.users, {
-    nullable: true,
-    onDelete: 'SET NULL',
-  })
-  branch: Branch | null;
-
   @ManyToMany(() => Branch, (branch) => branch.managedUsers)
   @JoinTable({
     name: 'user_branches',
@@ -83,4 +78,7 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Class, (classEntity) => classEntity.teacher)
   classes: Class[];
+
+  @OneToMany(() => TeacherCode, (code) => code.teacher)
+  code: TeacherCode[];
 }

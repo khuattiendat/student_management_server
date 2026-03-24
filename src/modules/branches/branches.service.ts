@@ -1,12 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Like, Repository } from 'typeorm';
+import { IsNull, Like, Repository } from 'typeorm';
 import { Branch } from '@/database/entities/branch.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 import { UserRole } from '@/database/entities/user.entity';
+import { Student } from '@/database/entities/student.entity';
 
 @Injectable()
 export class BranchesService {
@@ -35,6 +40,30 @@ export class BranchesService {
       .getMany();
 
     return branches;
+  }
+  async findAllTrash(query: BaseQueryDto) {
+    const page = Math.max(Number(query.page) || 1, 1);
+    const limit = Math.max(Number(query.limit) || 10, 1);
+    const queryBuilder = this.branchRepository
+      .createQueryBuilder('branch')
+      .withDeleted()
+      .where('branch.deletedAt IS NOT NULL');
+
+    const [items, total] = await queryBuilder
+      .orderBy('branch.id', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
   async create(createBranchDto: CreateBranchDto) {
     const branch = this.branchRepository.create(createBranchDto);
@@ -92,15 +121,156 @@ export class BranchesService {
   }
 
   async remove(id: number) {
-    const branch = await this.findOne(id);
+    return this.branchRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const branchRepository =
+          transactionalEntityManager.getRepository(Branch);
+        const studentRepository =
+          transactionalEntityManager.getRepository(Student);
+
+        await this.ensureBranchExistsInRepository(id, branchRepository);
+        await this.softDeleteRelatedUsersAndStudents(
+          id,
+          branchRepository,
+          studentRepository,
+        );
+        await branchRepository.softDelete(id);
+
+        return {
+          message: 'Branch deleted successfully',
+          id,
+        };
+      },
+    );
+  }
+
+  async forceRemove(id: number) {
+    return this.branchRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const branchRepository =
+          transactionalEntityManager.getRepository(Branch);
+        const studentRepository =
+          transactionalEntityManager.getRepository(Student);
+
+        await this.hardDeleteRelatedUsersAndStudents(
+          id,
+          branchRepository,
+          studentRepository,
+        );
+        await branchRepository.delete(id);
+
+        return {
+          message: 'Branch permanently deleted successfully',
+          id,
+        };
+      },
+    );
+  }
+
+  async restore(id: number) {
+    return this.branchRepository.manager.transaction(
+      async (transactionalEntityManager) => {
+        const branchRepository =
+          transactionalEntityManager.getRepository(Branch);
+        const studentRepository =
+          transactionalEntityManager.getRepository(Student);
+
+        const branch = await branchRepository.findOne({
+          where: { id },
+          withDeleted: true,
+        });
+
+        if (!branch) {
+          throw new NotFoundException(`Branch with id ${id} not found`);
+        }
+
+        if (!branch.deletedAt) {
+          throw new BadRequestException(`Branch with id ${id} is not deleted`);
+        }
+
+        await branchRepository.restore(id);
+        await this.restoreRelatedUsersAndStudents(id, studentRepository);
+
+        return {
+          message: 'Branch restored successfully',
+          id,
+        };
+      },
+    );
+  }
+
+  private async ensureBranchExistsInRepository(
+    id: number,
+    branchRepository: Repository<Branch>,
+  ): Promise<void> {
+    const branch = await branchRepository.findOne({ where: { id } });
     if (!branch) {
       throw new NotFoundException(`Branch with id ${id} not found`);
     }
-    await this.branchRepository.remove(branch);
+  }
 
-    return {
-      message: 'Branch deleted successfully',
-      id,
-    };
+  private async softDeleteRelatedUsersAndStudents(
+    branchId: number,
+    branchRepository: Repository<Branch>,
+    studentRepository: Repository<Student>,
+  ): Promise<void> {
+    await this.detachUsersFromBranch(branchId, branchRepository);
+
+    await studentRepository.update(
+      { branchId, deletedAt: IsNull() },
+      { deletedByBranchId: branchId },
+    );
+
+    await Promise.all([
+      studentRepository.softDelete({ branchId, deletedAt: IsNull() }),
+    ]);
+  }
+
+  private async hardDeleteRelatedUsersAndStudents(
+    branchId: number,
+    branchRepository: Repository<Branch>,
+    studentRepository: Repository<Student>,
+  ): Promise<void> {
+    await this.detachUsersFromBranch(branchId, branchRepository);
+
+    await Promise.all([studentRepository.delete({ branchId })]);
+  }
+
+  private async restoreRelatedUsersAndStudents(
+    branchId: number,
+    studentRepository: Repository<Student>,
+  ): Promise<void> {
+    await Promise.all([
+      studentRepository.restore({
+        branchId,
+        deletedByBranchId: branchId,
+      }),
+    ]);
+    await studentRepository.update(
+      { branchId, deletedByBranchId: branchId },
+      { deletedByBranchId: null },
+    );
+  }
+
+  private async detachUsersFromBranch(
+    branchId: number,
+    branchRepository: Repository<Branch>,
+  ): Promise<void> {
+    const branchWithUsers = await branchRepository.findOne({
+      where: { id: branchId },
+      relations: ['managedUsers'],
+    });
+
+    if (!branchWithUsers || !branchWithUsers.managedUsers.length) {
+      return;
+    }
+
+    const userIds = branchWithUsers.managedUsers.map((user) => user.id);
+
+    await branchRepository
+      .createQueryBuilder()
+      .relation(Branch, 'managedUsers')
+      .of(branchId)
+      .remove(userIds);
   }
 }

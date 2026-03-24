@@ -21,6 +21,8 @@ import { UpdateStudentDto } from './dto/update-student.dto';
 import { RenewStudentCourseDto } from './dto/renew-student-course.dto';
 import { QueryStudentAttendanceDto } from './dto/query-student-attendance.dto';
 import { QueryStudentsByEnrollmentsDto } from './dto/query-students-by-enrollments.dto';
+import { BaseQueryDto } from '@/common/base/base.QueryDto';
+import { ClassStudent } from '@/database/entities/class_student.entity';
 
 @Injectable()
 export class StudentsService {
@@ -160,6 +162,41 @@ export class StudentsService {
     const student = await this.findStudentEntityById(id);
     const sessionStats = await this.getStudentSessionStats([student.id]);
     return this.buildStudentProfile(student, sessionStats.get(student.id));
+  }
+
+  async findAllTrash(query: BaseQueryDto) {
+    const page = Math.max(Number(query.page) || 1, 1);
+    const limit = Math.max(Number(query.limit) || 10, 1);
+
+    const queryBuilder = this.studentRepository
+      .createQueryBuilder('student')
+      .withDeleted()
+      .where(
+        'student.deletedAt IS NOT NULL AND student.deletedBy_branch_id IS NULL',
+      )
+      .leftJoin('student.branch', 'branch')
+      .select([
+        'student.id',
+        'student.name',
+        'student.phone',
+        'student.deletedAt',
+        'branch.name',
+      ])
+      .orderBy('student.deletedAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [items, total] = await queryBuilder.getManyAndCount();
+
+    return {
+      items,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findByEnrollments(query: QueryStudentsByEnrollmentsDto) {
@@ -358,13 +395,55 @@ export class StudentsService {
   }
 
   async remove(id: number) {
-    const student = await this.findStudentEntityById(id);
-    await this.studentRepository.softRemove(student);
+    return this.studentRepository.manager.transaction(async (manager) => {
+      const student = await this.findStudentEntityById(id, manager);
 
-    return {
-      message: 'Student deleted successfully',
-      id,
-    };
+      await this.softDeleteStudentRelations(manager, student.id);
+      await manager.getRepository(Student).softDelete(student.id);
+
+      return {
+        message: 'Student deleted successfully',
+        id,
+      };
+    });
+  }
+  async restore(id: number) {
+    return this.studentRepository.manager.transaction(async (manager) => {
+      const student = await manager.getRepository(Student).findOne({
+        where: { id },
+        withDeleted: true,
+      });
+      if (!student || !student.deletedAt) {
+        throw new NotFoundException(`Student with id ${id} not found in trash`);
+      }
+
+      await this.restoreStudentRelations(manager, student.id);
+      await manager.getRepository(Student).restore(student.id);
+      return {
+        message: 'Student restored successfully',
+        id,
+      };
+    });
+  }
+
+  async forceRemove(id: number) {
+    return this.studentRepository.manager.transaction(async (manager) => {
+      const student = await manager.getRepository(Student).findOne({
+        where: { id },
+        withDeleted: true,
+      });
+      if (!student) {
+        throw new NotFoundException(`Student with id ${id} not found`);
+      }
+
+      await this.forceDeleteStudentRelations(manager, student.id);
+      await manager.getRepository(Student).delete(student.id);
+
+      return {
+        message: 'Student permanently deleted successfully',
+        id,
+      };
+    });
   }
 
   private async findStudentEntityById(
@@ -384,6 +463,32 @@ export class StudentsService {
     }
 
     return student;
+  }
+  private async softDeleteStudentRelations(
+    manager: EntityManager,
+    studentId: number,
+  ) {
+    await manager.getRepository(Attendance).softDelete({ studentId });
+    await manager.getRepository(Enrollment).softDelete({ studentId });
+    await manager.getRepository(ClassStudent).softDelete({ studentId });
+  }
+
+  private async restoreStudentRelations(
+    manager: EntityManager,
+    studentId: number,
+  ) {
+    await manager.getRepository(Attendance).restore({ studentId });
+    await manager.getRepository(Enrollment).restore({ studentId });
+    await manager.getRepository(ClassStudent).restore({ studentId });
+  }
+
+  private async forceDeleteStudentRelations(
+    manager: EntityManager,
+    studentId: number,
+  ) {
+    await manager.getRepository(Attendance).delete({ studentId });
+    await manager.getRepository(Enrollment).delete({ studentId });
+    await manager.getRepository(ClassStudent).delete({ studentId });
   }
 
   private async ensureBranchExists(

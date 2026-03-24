@@ -20,6 +20,10 @@ export class UpdateClassDto {
   name?: string;
 
   @IsOptional()
+  @MaxLength(255)
+  roomName?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   branchId?: number;

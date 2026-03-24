@@ -20,6 +20,9 @@ export enum ClassType {
 // weekdays: 0 - Sunday, 1 - Monday, ..., 6 - Saturday
 @Entity('classes')
 export class Class extends BaseEntity {
+  @Column({ name: 'branch_id', type: 'int' })
+  branchId: number;
+
   @Column({ name: 'teacher_id', type: 'int', nullable: true })
   teacherId?: number;
 
@@ -35,6 +38,14 @@ export class Class extends BaseEntity {
   type: ClassType;
   @Column({ name: 'name', type: 'varchar', length: 255, nullable: false })
   name: string;
+
+  @Column({
+    name: 'room_name',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  roomName: string | null;
 
   @Column({
     name: 'status',

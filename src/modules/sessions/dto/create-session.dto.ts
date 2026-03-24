@@ -3,6 +3,7 @@ import {
   IsInt,
   IsMilitaryTime,
   IsNotEmpty,
+  IsOptional,
   Min,
 } from 'class-validator';
 
@@ -21,4 +22,7 @@ export class CreateSessionDto {
   @IsNotEmpty()
   @IsMilitaryTime()
   endTime: string;
+
+  @IsOptional()
+  code: string;
 }

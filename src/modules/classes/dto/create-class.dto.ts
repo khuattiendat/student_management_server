@@ -25,6 +25,10 @@ export class CreateClassDto {
   @MaxLength(255)
   name: string;
 
+  @IsOptional()
+  @MaxLength(255)
+  roomName?: string;
+
   @IsInt()
   @Min(1)
   branchId: number;
