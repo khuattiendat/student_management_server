@@ -7,4 +7,13 @@ export class QueryStudentDto extends BaseQueryDto {
 
   @IsOptional()
   packageId?: string;
+
+  @IsOptional()
+  classId?: string;
+
+  @IsOptional()
+  isCalled?: string;
+
+  @IsOptional()
+  isTexted?: string;
 }

@@ -22,6 +22,7 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { UserRole } from '@/database/entities/user.entity';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
+import { CycleDto } from './dto/cycle.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.TEACHER)
@@ -43,6 +44,10 @@ export class StudentsController {
   @Get('by-enrollments')
   findByEnrollments(@Query() query: QueryStudentsByEnrollmentsDto) {
     return this.studentsService.findByEnrollments(query);
+  }
+  @Get('cycles')
+  getCycleStudents(@Query() query: CycleDto) {
+    return this.studentsService.getCycleStudents(query);
   }
 
   @Roles(UserRole.ADMIN)
@@ -71,6 +76,32 @@ export class StudentsController {
     @Body() updateStudentDto: UpdateStudentDto,
   ) {
     return this.studentsService.update(id, updateStudentDto);
+  }
+  @Roles(UserRole.ADMIN)
+  @Put(':id/cycle-start-date')
+  updateCycleStartDate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('cycleStartDate') cycleStartDate: Date | null,
+  ) {
+    return this.studentsService.updateCycleStartDate(id, cycleStartDate);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Put(':id/is-called')
+  toggleIsCalled(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('isCalled') isCalled: boolean,
+  ) {
+    return this.studentsService.updateIsCalled(id, isCalled);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Put(':id/is-texted')
+  toggleIsTexted(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('isTexted') isTexted: boolean,
+  ) {
+    return this.studentsService.updateIsTexted(id, isTexted);
   }
 
   @Roles(UserRole.ADMIN)

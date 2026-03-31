@@ -55,6 +55,12 @@ export class TeacherCodeService {
         teacherId: query.teacherId,
       });
     }
+    if (query.status) {
+      const isActive = query.status === 'active';
+      queryBuilder.andWhere('(teacherCode.is_used = false) = :isActive', {
+        isActive,
+      });
+    }
 
     const [items, total] = await queryBuilder.getManyAndCount();
 

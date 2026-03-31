@@ -4,7 +4,7 @@ import { User } from './user.entity';
 
 @Entity('teacher_code')
 export class TeacherCode extends BaseEntity {
-  @Column({ type: 'varchar', length: 255, nullable: false })
+  @Column({ type: 'varchar', length: 255, nullable: false, unique: true })
   code: string;
 
   @Column({ name: 'expires_at', type: 'timestamp', nullable: false })

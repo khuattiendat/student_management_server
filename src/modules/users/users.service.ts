@@ -11,6 +11,7 @@ import { Branch } from '@/database/entities/branch.entity';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { Class } from '@/database/entities/class.entity';
+import { TeacherCode } from '@/database/entities/teacherCode.entity';
 
 @Injectable()
 export class UsersService {
@@ -30,6 +31,7 @@ export class UsersService {
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.branches', 'branches')
+      .leftJoinAndSelect('user.classes', 'classes')
       .where('user.deletedAt IS NULL')
       .where('user.role != :adminRole', { adminRole: 'admin' })
       .orderBy('user.id', 'DESC')
@@ -120,6 +122,8 @@ export class UsersService {
       async (transactionalEntityManager) => {
         const userRepository = transactionalEntityManager.getRepository(User);
         const classRepository = transactionalEntityManager.getRepository(Class);
+        const teacherCodeRepository =
+          transactionalEntityManager.getRepository(TeacherCode);
         const user = await userRepository.findOne({
           where: { id },
         });
@@ -128,9 +132,8 @@ export class UsersService {
           throw new NotFoundException(`User with id ${id} not found`);
         }
         await classRepository.update({ teacher: { id } }, { teacher: null });
-
+        await teacherCodeRepository.delete({ teacherId: id });
         await transactionalEntityManager.remove(user);
-
         return {
           message: 'User deleted successfully',
           id,
@@ -182,6 +185,11 @@ export class UsersService {
         id: branch.id,
         name: branch.name,
       })) || [];
+    const classes =
+      user.classes?.map((classEntity) => ({
+        id: classEntity.id,
+        name: classEntity.name,
+      })) || [];
 
     return {
       id: user.id,
@@ -189,6 +197,7 @@ export class UsersService {
       userName: user.userName,
       phone: user.phone,
       branches,
+      classes,
       role: user.role,
       status: user.status,
       createdAt: user.createdAt,

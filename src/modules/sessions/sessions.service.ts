@@ -279,6 +279,7 @@ export class SessionsService {
     const queryBuilder = this.sessionRepository
       .createQueryBuilder('session')
       .leftJoinAndSelect('session.classEntity', 'classEntity')
+      .leftJoinAndSelect('session.attendances', 'attendance')
       .select([
         'session.id',
         'session.sessionDate',
@@ -286,6 +287,10 @@ export class SessionsService {
         'session.endTime',
         'classEntity.id',
         'classEntity.name',
+        'attendance.id',
+        'attendance.studentId',
+        'attendance.status',
+        'attendance.rate',
       ])
       .orderBy('session.sessionDate', 'ASC')
       .skip((page - 1) * limit)

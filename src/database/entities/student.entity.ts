@@ -32,6 +32,27 @@ export class Student extends BaseEntity {
   name: string;
 
   @Column({
+    nullable: false,
+    name: 'is_called',
+    default: false,
+  })
+  isCalled: boolean;
+
+  @Column({
+    nullable: false,
+    name: 'is_texted',
+    default: false,
+  })
+  isTexted: boolean;
+
+  @Column({
+    nullable: true,
+    name: 'cycle_start_date',
+    type: 'date',
+  })
+  cycleStartDate: Date | null;
+
+  @Column({
     nullable: true,
     name: 'birthday',
     type: 'varchar',

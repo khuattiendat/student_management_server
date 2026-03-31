@@ -5,6 +5,8 @@ import { Parent } from '@/database/entities/parent.entity';
 import { Branch } from '@/database/entities/branch.entity';
 import { Package } from '@/database/entities/package.entity';
 import { Enrollment } from '@/database/entities/enrollment.entity';
+import { Session } from '@/database/entities/session.entity';
+import { ClassStudent } from '@/database/entities/class_student.entity';
 import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 import { AuthModule } from '../auth/auth.module';
@@ -19,6 +21,8 @@ import { Attendance } from '@/database/entities/attendance.entity';
       Package,
       Enrollment,
       Attendance,
+      Session,
+      ClassStudent,
     ]),
     AuthModule,
   ],

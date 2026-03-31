@@ -21,8 +21,10 @@ import { UpdateStudentDto } from './dto/update-student.dto';
 import { RenewStudentCourseDto } from './dto/renew-student-course.dto';
 import { QueryStudentAttendanceDto } from './dto/query-student-attendance.dto';
 import { QueryStudentsByEnrollmentsDto } from './dto/query-students-by-enrollments.dto';
+import { CycleDto } from './dto/cycle.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { ClassStudent } from '@/database/entities/class_student.entity';
+import { Session } from '@/database/entities/session.entity';
 
 @Injectable()
 export class StudentsService {
@@ -39,6 +41,10 @@ export class StudentsService {
     private readonly enrollmentRepository: Repository<Enrollment>,
     @InjectRepository(Attendance)
     private readonly attendanceRepository: Repository<Attendance>,
+    @InjectRepository(Session)
+    private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(ClassStudent)
+    private readonly classStudentRepository: Repository<ClassStudent>,
   ) {}
 
   async create(createStudentDto: CreateStudentDto) {
@@ -115,11 +121,9 @@ export class StudentsService {
         new Brackets((builder) => {
           builder
             .where('student.name LIKE :search', { search: `%${search}%` })
-            .where('student.address LIKE :search', { search: `%${search}%` })
             .orWhere('student.phone LIKE :search', { search: `%${search}%` })
-            .orWhere('parent.name LIKE :search', { search: `%${search}%` })
-            .orWhere('branch.name LIKE :search', { search: `%${search}%` })
-            .orWhere('package.name LIKE :search', { search: `%${search}%` });
+            .orWhere('student.birthday LIKE :search', { search: `%${search}%` })
+            .orWhere('parent.name LIKE :search', { search: `%${search}%` });
         }),
       );
     }
@@ -138,6 +142,22 @@ export class StudentsService {
         throw new BadRequestException('packageId must be a positive integer');
       }
       queryBuilder.andWhere('enrollment.packageId = :packageId', { packageId });
+    }
+    if (query.classId) {
+      const classId = Number(query.classId);
+      if (!Number.isInteger(classId) || classId < 1) {
+        throw new BadRequestException('classId must be a positive integer');
+      }
+      queryBuilder.andWhere('classStudents.classId = :classId', { classId });
+    }
+
+    if (query.isCalled) {
+      const isCalled = Number(query.isCalled) === 1;
+      queryBuilder.andWhere('student.isCalled = :isCalled', { isCalled });
+    }
+    if (query.isTexted) {
+      const isTexted = Number(query.isTexted) === 1;
+      queryBuilder.andWhere('student.isTexted = :isTexted', { isTexted });
     }
 
     const [items, total] = await queryBuilder.getManyAndCount();
@@ -256,6 +276,172 @@ export class StudentsService {
     };
   }
 
+  private parseDate(value: Date | string | null | undefined): Date | null {
+    if (value === null || value === undefined) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  async getCycleStudents(query: CycleDto) {
+    const classId = query.classId ? Number(query.classId) : undefined;
+    if (query.classId !== undefined) {
+      if (classId === undefined || !Number.isInteger(classId) || classId < 1) {
+        throw new BadRequestException('classId must be a positive integer');
+      }
+    }
+
+    if (!query.studentIds || !Array.isArray(query.studentIds)) {
+      throw new BadRequestException('studentIds must be a non-empty array');
+    }
+
+    const studentIds = query.studentIds
+      .map((id: string) => Number(id))
+      .filter((id: number) => Number.isInteger(id) && id > 0);
+
+    if (studentIds.length === 0) {
+      throw new BadRequestException(
+        'studentIds must contain at least one valid id',
+      );
+    }
+
+    const students = await this.studentRepository.find({
+      where: { id: In(studentIds) },
+      relations: ['classStudents'],
+    });
+
+    const studentsWithCycle = students.filter(
+      (student) =>
+        student.cycleStartDate !== null && student.cycleStartDate !== undefined,
+    );
+
+    if (studentsWithCycle.length === 0) {
+      return { items: [] };
+    }
+
+    const classIdSet = new Set<number>();
+    const studentClassMap = new Map<number, number[]>();
+
+    studentsWithCycle.forEach((student) => {
+      const classIds = (student.classStudents || []).map((cs) => cs.classId);
+      studentClassMap.set(student.id, classIds);
+      classIds.forEach((id) => classIdSet.add(id));
+    });
+
+    const queryClassIds = classId ? [classId] : Array.from(classIdSet);
+
+    const cycleTimes = studentsWithCycle
+      .map((student) => this.parseDate(student.cycleStartDate))
+      .filter((date): date is Date => date !== null)
+      .map((date) => date.getTime());
+
+    if (cycleTimes.length === 0) {
+      return { items: [] };
+    }
+
+    const minCycleDate = new Date(Math.min(...cycleTimes));
+    if (Number.isNaN(minCycleDate.getTime())) {
+      return { items: [] };
+    }
+
+    let sessions: Session[] = [];
+    if (queryClassIds.length > 0) {
+      const sessionsQuery = this.sessionRepository
+        .createQueryBuilder('session')
+        .where('session.classId IN (:...classIds)', { classIds: queryClassIds })
+        .andWhere('session.sessionDate >= :minCycleDate', {
+          minCycleDate: minCycleDate.toISOString().split('T')[0],
+        })
+        .orderBy('session.sessionDate', 'ASC')
+        .addOrderBy('session.startTime', 'ASC');
+
+      sessions = await sessionsQuery.getMany();
+    }
+
+    const attendanceQuery = this.attendanceRepository
+      .createQueryBuilder('attendance')
+      .leftJoinAndSelect('attendance.session', 'session')
+      .where('attendance.studentId IN (:...studentIds)', {
+        studentIds: studentsWithCycle.map((student) => student.id),
+      })
+      .andWhere('session.sessionDate >= :minCycleDate', {
+        minCycleDate: minCycleDate.toISOString().split('T')[0],
+      });
+
+    if (classId) {
+      attendanceQuery.andWhere('session.classId = :classId', { classId });
+    } else if (queryClassIds.length > 0) {
+      attendanceQuery.andWhere('session.classId IN (:...classIds)', {
+        classIds: queryClassIds,
+      });
+    }
+
+    const attendances = await attendanceQuery
+      .orderBy('session.sessionDate', 'ASC')
+      .addOrderBy('session.startTime', 'ASC')
+      .getMany();
+
+    const attendanceMap = new Map<number, Attendance[]>();
+    attendances.forEach((item) => {
+      const list = attendanceMap.get(item.studentId) || [];
+      list.push(item);
+      attendanceMap.set(item.studentId, list);
+    });
+
+    const items = studentsWithCycle.map((student) => {
+      const studentClassIds = studentClassMap.get(student.id) || [];
+      const studentSessions = sessions.filter((session) => {
+        if (classId) {
+          return session.classId === classId;
+        }
+        return studentClassIds.includes(session.classId);
+      });
+
+      const studentCycleStart = this.parseDate(student.cycleStartDate);
+
+      const filteredSessions = studentSessions.filter((session) => {
+        if (!studentCycleStart) {
+          return true;
+        }
+        const sessionDate = this.parseDate(session.sessionDate);
+        return sessionDate
+          ? sessionDate.getTime() >= studentCycleStart.getTime()
+          : false;
+      });
+
+      const studentAttendances = (attendanceMap.get(student.id) || []).filter(
+        (attendance) => {
+          if (!studentCycleStart) {
+            return true;
+          }
+          const attendanceSessionDate = this.parseDate(
+            attendance.session?.sessionDate,
+          );
+          return (
+            attendanceSessionDate &&
+            attendanceSessionDate.getTime() >= studentCycleStart.getTime()
+          );
+        },
+      );
+
+      return {
+        id: student.id,
+        name: student.name,
+        cycleStartDate: student.cycleStartDate,
+        classId: classId ?? null,
+        classIds: studentClassIds,
+        schedule: filteredSessions,
+        attendances: studentAttendances,
+      };
+    });
+
+    return {
+      items,
+    };
+  }
+
   async findAttendances(studentId: number, query: QueryStudentAttendanceDto) {
     await this.findStudentEntityById(studentId);
 
@@ -294,6 +480,18 @@ export class StudentsService {
       });
     }
 
+    const student = await this.studentRepository.findOne({
+      where: { id: studentId },
+      relations: ['classStudents', 'classStudents.classEntity'],
+    });
+
+    const studentClass = student?.classStudents?.map((item) => {
+      return {
+        id: item.classEntity.id,
+        name: item.classEntity.name,
+      };
+    });
+
     const [items, total] = await queryBuilder.getManyAndCount();
 
     const normalizedItems = items.map((attendance) =>
@@ -302,12 +500,41 @@ export class StudentsService {
 
     return {
       items: normalizedItems,
+      studentClass,
       pagination: {
         total,
         page,
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+  async updateCycleStartDate(id: number, cycleStartDate: Date | null) {
+    const student = await this.findStudentEntityById(id);
+    student.cycleStartDate = cycleStartDate;
+    await this.studentRepository.save(student);
+    return {
+      message: `Student cycleStartDate updated to ${cycleStartDate}`,
+      id,
+    };
+  }
+
+  async updateIsCalled(id: number, isCalled: boolean) {
+    const student = await this.findStudentEntityById(id);
+    student.isCalled = isCalled;
+    await this.studentRepository.save(student);
+    return {
+      message: `Student isCalled updated to ${isCalled}`,
+      id,
+    };
+  }
+  async updateIsTexted(id: number, isTexted: boolean) {
+    const student = await this.findStudentEntityById(id);
+    student.isTexted = isTexted;
+    await this.studentRepository.save(student);
+    return {
+      message: `Student isTexted updated to ${isTexted}`,
+      id,
     };
   }
 
