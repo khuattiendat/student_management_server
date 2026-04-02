@@ -63,4 +63,7 @@ export class CreateStudentDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   packageIds?: number[];
+
+  @IsOptional()
+  isPaid?: boolean;
 }

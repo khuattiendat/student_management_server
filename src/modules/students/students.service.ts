@@ -26,6 +26,7 @@ import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { ClassStudent } from '@/database/entities/class_student.entity';
 import { Session } from '@/database/entities/session.entity';
 import { Class } from '@/database/entities/class.entity';
+import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
 
 @Injectable()
 export class StudentsService {
@@ -51,7 +52,21 @@ export class StudentsService {
   ) {}
 
   async create(createStudentDto: CreateStudentDto) {
-    const normalizedPackageIds = this.normalizeIds(createStudentDto.packageIds);
+    const {
+      name,
+      addressDetail,
+      birthday,
+      branchId,
+      isPaid,
+      packageIds,
+      parents: _parents,
+      phone,
+      provinceCode,
+      provinceName,
+      wardCode,
+      wardName,
+    } = createStudentDto;
+    const normalizedPackageIds = this.normalizeIds(packageIds);
 
     if (normalizedPackageIds.length === 0) {
       throw new BadRequestException(
@@ -61,8 +76,8 @@ export class StudentsService {
 
     return this.studentRepository.manager.transaction(async (manager) => {
       const branch =
-        createStudentDto.branchId !== undefined
-          ? await this.ensureBranchExists(createStudentDto.branchId, manager)
+        branchId !== undefined
+          ? await this.ensureBranchExists(branchId, manager)
           : null;
 
       const packages = await this.ensurePackagesExist(
@@ -70,28 +85,25 @@ export class StudentsService {
         manager,
       );
 
-      const parents = await this.resolveParents(
-        createStudentDto.parents ?? [],
-        manager,
-      );
+      const parents = await this.resolveParents(_parents ?? [], manager);
 
       const studentRepository = manager.getRepository(Student);
       const student = studentRepository.create({
-        name: createStudentDto.name,
-        addressDetail: createStudentDto.addressDetail,
-        provinceCode: createStudentDto.provinceCode,
-        wardCode: createStudentDto.wardCode,
-        provinceName: createStudentDto.provinceName,
-        wardName: createStudentDto.wardName,
-        birthday: createStudentDto.birthday,
-        phone: createStudentDto.phone,
+        name: name,
+        addressDetail: addressDetail,
+        provinceCode: provinceCode,
+        wardCode: wardCode,
+        provinceName: provinceName,
+        wardName: wardName,
+        birthday: birthday,
+        phone: phone,
         branchId: branch ? branch.id : null,
         branch,
         parents,
       });
 
       const savedStudent = await studentRepository.save(student);
-      await this.syncEnrollments(manager, savedStudent.id, packages);
+      await this.syncEnrollments(manager, savedStudent.id, packages, isPaid);
 
       const createdStudent = await this.findStudentEntityById(
         savedStudent.id,
@@ -467,6 +479,28 @@ export class StudentsService {
       id,
     };
   }
+  async updateIsPaidEnrollment(
+    id: number,
+    enrollmentId: number,
+    data: UpdateIsPaidEnrollmentDto,
+  ) {
+    const { isPaid } = data;
+    const enrollment = await this.enrollmentRepository.findOne({
+      where: { id: enrollmentId, studentId: id },
+    });
+    if (!enrollment) {
+      throw new NotFoundException(
+        `Enrollment with id ${enrollmentId} for student ${id} not found`,
+      );
+    }
+    enrollment.isPaid = isPaid;
+    await this.enrollmentRepository.save(enrollment);
+    return {
+      message: `Enrollment isPaid updated to ${isPaid}`,
+      enrollmentId,
+      studentId: id,
+    };
+  }
 
   async update(id: number, updateStudentDto: UpdateStudentDto) {
     return this.studentRepository.manager.transaction(async (manager) => {
@@ -527,9 +561,8 @@ export class StudentsService {
   }
 
   async renewCourse(id: number, renewStudentCourseDto: RenewStudentCourseDto) {
-    const normalizedPackageIds = this.normalizeIds(
-      renewStudentCourseDto.packageIds,
-    );
+    const { isPaid, packageIds } = renewStudentCourseDto;
+    const normalizedPackageIds = this.normalizeIds(packageIds);
 
     if (normalizedPackageIds.length === 0) {
       throw new BadRequestException(
@@ -544,7 +577,7 @@ export class StudentsService {
         manager,
       );
 
-      await this.appendEnrollments(manager, id, packages);
+      await this.appendEnrollments(manager, id, packages, isPaid);
 
       const updatedStudent = await this.findStudentEntityById(id, manager);
       return this.buildStudentProfile(updatedStudent);
@@ -803,6 +836,7 @@ export class StudentsService {
     manager: EntityManager,
     studentId: number,
     packages: Package[],
+    isPaid = false,
   ): Promise<void> {
     const enrollmentRepository = manager.getRepository(Enrollment);
     await enrollmentRepository.delete({ studentId });
@@ -814,6 +848,7 @@ export class StudentsService {
     const enrollments = packages.map((packageEntity) =>
       enrollmentRepository.create({
         studentId,
+        isPaid,
         packageId: packageEntity.id,
         remainingSessions: Number(packageEntity.totalSessions ?? 0),
       }),
@@ -826,6 +861,7 @@ export class StudentsService {
     manager: EntityManager,
     studentId: number,
     packages: Package[],
+    isPaid = false,
   ): Promise<void> {
     if (packages.length === 0) {
       return;
@@ -853,12 +889,14 @@ export class StudentsService {
 
       if (existing) {
         existing.remainingSessions += packageSessions;
+        existing.isPaid = isPaid;
         return existing;
       }
 
       return enrollmentRepository.create({
         studentId,
         packageId: packageEntity.id,
+        isPaid,
         remainingSessions: packageSessions,
       });
     });

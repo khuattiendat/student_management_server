@@ -23,6 +23,7 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { UserRole } from '@/database/entities/user.entity';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { CycleDto } from './dto/cycle.dto';
+import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.TEACHER)
@@ -102,6 +103,15 @@ export class StudentsController {
     @Body('isTexted') isTexted: boolean,
   ) {
     return this.studentsService.updateIsTexted(id, isTexted);
+  }
+  @Roles(UserRole.ADMIN)
+  @Put(':id/enrollments/:enrollmentId/is-paid')
+  toggleIsPaid(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('enrollmentId', ParseIntPipe) enrollmentId: number,
+    @Body() data: UpdateIsPaidEnrollmentDto,
+  ) {
+    return this.studentsService.updateIsPaidEnrollment(id, enrollmentId, data);
   }
 
   @Roles(UserRole.ADMIN)

@@ -3,6 +3,7 @@ import {
   ArrayUnique,
   IsArray,
   IsInt,
+  IsOptional,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -15,4 +16,7 @@ export class RenewStudentCourseDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   packageIds: number[];
+
+  @IsOptional()
+  isPaid?: boolean;
 }
