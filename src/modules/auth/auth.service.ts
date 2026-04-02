@@ -16,6 +16,7 @@ import { LoginDto } from './dto/login.dto';
 import { StringValue } from 'ms';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePassworAdmindDto } from './dto/change-password-admin.dto';
 
 interface JwtPayload {
   sub: number;
@@ -154,7 +155,7 @@ export class AuthService {
 
   async profile(userId: number) {
     const user = await this.userRepository.findOne({
-      where: { id: userId },
+      where: { id: userId, status: UserStatus.ACTIVE },
       relations: ['branches'],
     });
 
@@ -199,6 +200,32 @@ export class AuthService {
 
     const hashedNewPassword = await bcrypt.hash(
       changePasswordDto.newPassword,
+      10,
+    );
+
+    await this.userRepository.update(user.id, {
+      password: hashedNewPassword,
+    });
+
+    return {
+      message: 'Password changed successfully',
+    };
+  }
+  async changePasswordAdmin(changePasswordAdminDto: ChangePassworAdmindDto) {
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.id = :teacherId', {
+        teacherId: changePasswordAdminDto.teacherId,
+      })
+      .getOne();
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const hashedNewPassword = await bcrypt.hash(
+      changePasswordAdminDto.newPassword,
       10,
     );
 

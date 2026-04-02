@@ -1,11 +1,16 @@
-import { IsArray, IsOptional, IsNumberString } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CycleDto {
-  @IsOptional()
-  @IsNumberString()
-  classId: string;
+  @IsNotEmpty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  classId: number;
 
   @IsOptional()
-  @IsArray()
-  studentIds: string[];
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  studentId?: number;
 }

@@ -4,9 +4,11 @@ import { Student } from './student.entity';
 import { BaseEntity } from '@/common/base/base.entity';
 
 export enum AttendanceStatus {
-  PRESENT = 'present', // Đi học
-  ABSENT = 'absent', // Vắng mặt
-  LATE = 'late', //
+  PRESENT = 'present', // Có mặt
+  LATE = 'late', // Đi muộn
+  EXCUSED_ABSENT = 'excused_absent', // Vắng có phép
+  UNEXCUSED_ABSENT = 'unexcused_absent', // Vắng không phép
+  LATE_CANCEL_ABSENT = 'late_cancel_absent', // Báo nghỉ sát giờ
 }
 
 @Entity('attendances')

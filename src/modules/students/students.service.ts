@@ -25,6 +25,7 @@ import { CycleDto } from './dto/cycle.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { ClassStudent } from '@/database/entities/class_student.entity';
 import { Session } from '@/database/entities/session.entity';
+import { Class } from '@/database/entities/class.entity';
 
 @Injectable()
 export class StudentsService {
@@ -43,6 +44,8 @@ export class StudentsService {
     private readonly attendanceRepository: Repository<Attendance>,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
+    @InjectRepository(Class)
+    private readonly classRepository: Repository<Class>,
     @InjectRepository(ClassStudent)
     private readonly classStudentRepository: Repository<ClassStudent>,
   ) {}
@@ -276,169 +279,100 @@ export class StudentsService {
     };
   }
 
-  private parseDate(value: Date | string | null | undefined): Date | null {
-    if (value === null || value === undefined) return null;
-    if (value instanceof Date) {
-      return Number.isNaN(value.getTime()) ? null : value;
-    }
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
   async getCycleStudents(query: CycleDto) {
-    const classId = query.classId ? Number(query.classId) : undefined;
-    if (query.classId !== undefined) {
-      if (classId === undefined || !Number.isInteger(classId) || classId < 1) {
-        throw new BadRequestException('classId must be a positive integer');
+    const classEntity = await this.classRepository.findOne({
+      where: { id: query.classId },
+      relations: [
+        'branch',
+        'teacher',
+        'classStudents',
+        'classStudents.student',
+      ],
+    });
+
+    if (!classEntity) {
+      throw new NotFoundException(`Class with id ${query.classId} not found`);
+    }
+
+    let selectedClassStudents = classEntity.classStudents ?? [];
+
+    if (query.studentId) {
+      selectedClassStudents = selectedClassStudents.filter(
+        (item) => item.studentId === query.studentId,
+      );
+
+      if (selectedClassStudents.length === 0) {
+        throw new BadRequestException(
+          `studentId ${query.studentId} does not belong to class ${query.classId}`,
+        );
       }
     }
 
-    if (!query.studentIds || !Array.isArray(query.studentIds)) {
-      throw new BadRequestException('studentIds must be a non-empty array');
-    }
+    const studentIds = selectedClassStudents.map((item) => item.studentId);
 
-    const studentIds = query.studentIds
-      .map((id: string) => Number(id))
-      .filter((id: number) => Number.isInteger(id) && id > 0);
-
-    if (studentIds.length === 0) {
-      throw new BadRequestException(
-        'studentIds must contain at least one valid id',
-      );
-    }
-
-    const students = await this.studentRepository.find({
-      where: { id: In(studentIds) },
-      relations: ['classStudents'],
-    });
-
-    const studentsWithCycle = students.filter(
-      (student) =>
-        student.cycleStartDate !== null && student.cycleStartDate !== undefined,
-    );
-
-    if (studentsWithCycle.length === 0) {
-      return { items: [] };
-    }
-
-    const classIdSet = new Set<number>();
-    const studentClassMap = new Map<number, number[]>();
-
-    studentsWithCycle.forEach((student) => {
-      const classIds = (student.classStudents || []).map((cs) => cs.classId);
-      studentClassMap.set(student.id, classIds);
-      classIds.forEach((id) => classIdSet.add(id));
-    });
-
-    const queryClassIds = classId ? [classId] : Array.from(classIdSet);
-
-    const cycleTimes = studentsWithCycle
-      .map((student) => this.parseDate(student.cycleStartDate))
-      .filter((date): date is Date => date !== null)
-      .map((date) => date.getTime());
-
-    if (cycleTimes.length === 0) {
-      return { items: [] };
-    }
-
-    const minCycleDate = new Date(Math.min(...cycleTimes));
-    if (Number.isNaN(minCycleDate.getTime())) {
-      return { items: [] };
-    }
-
-    let sessions: Session[] = [];
-    if (queryClassIds.length > 0) {
-      const sessionsQuery = this.sessionRepository
-        .createQueryBuilder('session')
-        .where('session.classId IN (:...classIds)', { classIds: queryClassIds })
-        .andWhere('session.sessionDate >= :minCycleDate', {
-          minCycleDate: minCycleDate.toISOString().split('T')[0],
-        })
-        .orderBy('session.sessionDate', 'ASC')
-        .addOrderBy('session.startTime', 'ASC');
-
-      sessions = await sessionsQuery.getMany();
-    }
-
-    const attendanceQuery = this.attendanceRepository
-      .createQueryBuilder('attendance')
-      .leftJoinAndSelect('attendance.session', 'session')
-      .where('attendance.studentId IN (:...studentIds)', {
-        studentIds: studentsWithCycle.map((student) => student.id),
-      })
-      .andWhere('session.sessionDate >= :minCycleDate', {
-        minCycleDate: minCycleDate.toISOString().split('T')[0],
-      });
-
-    if (classId) {
-      attendanceQuery.andWhere('session.classId = :classId', { classId });
-    } else if (queryClassIds.length > 0) {
-      attendanceQuery.andWhere('session.classId IN (:...classIds)', {
-        classIds: queryClassIds,
-      });
-    }
-
-    const attendances = await attendanceQuery
+    const sessionsQuery = this.sessionRepository
+      .createQueryBuilder('session')
+      .where('session.classId = :classId', { classId: query.classId })
       .orderBy('session.sessionDate', 'ASC')
-      .addOrderBy('session.startTime', 'ASC')
-      .getMany();
+      .addOrderBy('session.startTime', 'ASC');
 
-    const attendanceMap = new Map<number, Attendance[]>();
-    attendances.forEach((item) => {
-      const list = attendanceMap.get(item.studentId) || [];
-      list.push(item);
-      attendanceMap.set(item.studentId, list);
-    });
+    const sessions = await sessionsQuery.getMany();
+    const sessionIds = sessions.map((session) => session.id);
 
-    const items = studentsWithCycle.map((student) => {
-      const studentClassIds = studentClassMap.get(student.id) || [];
-      const studentSessions = sessions.filter((session) => {
-        if (classId) {
-          return session.classId === classId;
-        }
-        return studentClassIds.includes(session.classId);
-      });
+    let attendances: Attendance[] = [];
+    if (studentIds.length > 0 && sessionIds.length > 0) {
+      attendances = await this.attendanceRepository
+        .createQueryBuilder('attendance')
+        .leftJoinAndSelect('attendance.session', 'session')
+        .where('attendance.studentId IN (:...studentIds)', { studentIds })
+        .andWhere('attendance.sessionId IN (:...sessionIds)', { sessionIds })
+        .orderBy('session.sessionDate', 'ASC')
+        .addOrderBy('session.startTime', 'ASC')
+        .getMany();
+    }
 
-      const studentCycleStart = this.parseDate(student.cycleStartDate);
-
-      const filteredSessions = studentSessions.filter((session) => {
-        if (!studentCycleStart) {
-          return true;
-        }
-        const sessionDate = this.parseDate(session.sessionDate);
-        return sessionDate
-          ? sessionDate.getTime() >= studentCycleStart.getTime()
-          : false;
-      });
-
-      const studentAttendances = (attendanceMap.get(student.id) || []).filter(
-        (attendance) => {
-          if (!studentCycleStart) {
-            return true;
-          }
-          const attendanceSessionDate = this.parseDate(
-            attendance.session?.sessionDate,
-          );
-          return (
-            attendanceSessionDate &&
-            attendanceSessionDate.getTime() >= studentCycleStart.getTime()
-          );
-        },
-      );
-
-      return {
-        id: student.id,
-        name: student.name,
-        cycleStartDate: student.cycleStartDate,
-        classId: classId ?? null,
-        classIds: studentClassIds,
-        schedule: filteredSessions,
-        attendances: studentAttendances,
-      };
+    const attendanceByStudent = new Map<number, Attendance[]>();
+    attendances.forEach((attendance) => {
+      const list = attendanceByStudent.get(attendance.studentId) ?? [];
+      list.push(attendance);
+      attendanceByStudent.set(attendance.studentId, list);
     });
 
     return {
-      items,
+      class: {
+        id: classEntity.id,
+        name: classEntity.name,
+        status: classEntity.status,
+        type: classEntity.type,
+        roomName: classEntity.roomName,
+        startDate: classEntity.startDate,
+        startTime: classEntity.startTime,
+        endTime: classEntity.endTime,
+        weekdays: classEntity.weekdays,
+        scheduleByWeekday: classEntity.scheduleByWeekday,
+        branch: classEntity.branch
+          ? {
+              id: classEntity.branch.id,
+              name: classEntity.branch.name,
+            }
+          : null,
+        teacher: classEntity.teacher
+          ? {
+              id: classEntity.teacher.id,
+              name: classEntity.teacher.name,
+            }
+          : null,
+      },
+      schedule: sessions,
+      students: selectedClassStudents.map((classStudent) => ({
+        id: classStudent.student.id,
+        name: classStudent.student.name,
+        phone: classStudent.student.phone,
+        cycleStartDate: classStudent.student.cycleStartDate,
+        attendances: attendanceByStudent.get(classStudent.studentId) ?? [],
+      })),
+      totalSessions: sessions.length,
+      totalStudents: selectedClassStudents.length,
     };
   }
 
@@ -473,10 +407,6 @@ export class StudentsService {
     if (query.status) {
       queryBuilder.andWhere('attendance.status = :status', {
         status: query.status,
-      });
-    } else {
-      queryBuilder.andWhere('attendance.status != :absentStatus', {
-        absentStatus: AttendanceStatus.ABSENT,
       });
     }
 
@@ -956,9 +886,9 @@ export class StudentsService {
         .select('attendance.studentId', 'studentId')
         .addSelect('COUNT(attendance.id)', 'learnedSessions')
         .where('attendance.studentId IN (:...studentIds)', { studentIds })
-        .andWhere('attendance.status != :absentStatus', {
-          absentStatus: AttendanceStatus.ABSENT,
-        })
+        // .andWhere('attendance.status != :absentStatus', {
+        //   absentStatus: AttendanceStatus.EXCUSED_ABSENT,
+        // })
         .groupBy('attendance.studentId')
         .getRawMany<{ studentId: string; learnedSessions: string }>(),
       this.enrollmentRepository

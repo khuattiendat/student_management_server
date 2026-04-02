@@ -778,7 +778,7 @@ export class SessionsService {
   }
 
   private isAttendanceConsumed(status: AttendanceStatus): boolean {
-    return status !== AttendanceStatus.ABSENT;
+    return status !== AttendanceStatus.EXCUSED_ABSENT;
   }
 
   private validateTimeRange(startTime: string, endTime: string) {

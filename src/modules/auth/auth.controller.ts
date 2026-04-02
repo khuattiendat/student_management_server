@@ -11,6 +11,7 @@ import { UserRole } from '@/database/entities/user.entity';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePassworAdmindDto } from './dto/change-password-admin.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -50,6 +51,12 @@ export class AuthController {
     @Body() changePasswordDto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(user.sub, changePasswordDto);
+  }
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @Put('admin/change-password')
+  changePasswordAdmin(@Body() changePasswordAdminDto: ChangePassworAdmindDto) {
+    return this.authService.changePasswordAdmin(changePasswordAdminDto);
   }
 
   @UseGuards(JwtAuthGuard)

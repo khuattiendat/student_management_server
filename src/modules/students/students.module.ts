@@ -11,6 +11,7 @@ import { StudentsController } from './students.controller';
 import { StudentsService } from './students.service';
 import { AuthModule } from '../auth/auth.module';
 import { Attendance } from '@/database/entities/attendance.entity';
+import { Class } from '@/database/entities/class.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { Attendance } from '@/database/entities/attendance.entity';
       Attendance,
       Session,
       ClassStudent,
+      Class,
     ]),
     AuthModule,
   ],
