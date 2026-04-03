@@ -14,4 +14,8 @@ export const databaseConfig = (
   entities: [join(__dirname, '/../**/*.entity{.ts,.js}')],
   autoLoadEntities: true,
   synchronize: false,
+  extra: {
+    connectionLimit: 3,
+    enableKeepAlive: true,
+  },
 });

@@ -71,7 +71,7 @@ yarn migration:run
 **seed data**
 
 ```bashyarn seed
-yarn seed
+yarn migration:seed
 ```
 
 > ⚠️ **Warning**: Always backup your database before running migrations in production!
