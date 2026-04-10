@@ -27,7 +27,7 @@ let AppService = class AppService {
         this.dataSource = dataSource;
     }
     getHello() {
-        return 'Hello World!';
+        return 'Hello World 123';
     }
     async getAdminDashboard(params) {
         const branchId = this.parseOptionalPositiveInt(params.branchId);
