@@ -1,7 +1,6 @@
 import { Column, Entity, OneToMany } from 'typeorm';
 import { BaseEntity } from '@/common/base/base.entity';
 import { Enrollment } from './enrollment.entity';
-import { Class } from './class.entity';
 import { ClassPackage } from './class_packages.entity';
 
 export enum PackageType {

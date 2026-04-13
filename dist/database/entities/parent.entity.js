@@ -15,6 +15,7 @@ const base_entity_1 = require("../../common/base/base.entity");
 const student_entity_1 = require("./student.entity");
 let Parent = class Parent extends base_entity_1.BaseEntity {
     name;
+    zaloName;
     phone;
     email;
     students;
@@ -24,6 +25,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'name', type: 'varchar', length: 255, nullable: false }),
     __metadata("design:type", String)
 ], Parent.prototype, "name", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'zalo_name', type: 'varchar', length: 255, nullable: true }),
+    __metadata("design:type", String)
+], Parent.prototype, "zaloName", void 0);
 __decorate([
     (0, typeorm_1.Column)({ name: 'phone', type: 'varchar', length: 20, nullable: true }),
     __metadata("design:type", String)

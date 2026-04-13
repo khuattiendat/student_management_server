@@ -6,7 +6,7 @@ export declare class CreateStudentDto {
     wardCode?: number;
     provinceName?: string;
     wardName?: string;
-    birthday?: string;
+    birthday?: Date | null;
     phone?: string;
     branchId?: number;
     parents?: StudentParentDto[];

@@ -16,7 +16,7 @@ import { StudentParentDto } from './student-parent.dto';
 export class CreateStudentDto {
   @IsNotEmpty()
   @MaxLength(255)
-  name: string;
+  name!: string;
 
   @IsOptional()
   @MaxLength(255)
@@ -37,7 +37,7 @@ export class CreateStudentDto {
   wardName?: string;
 
   @IsOptional()
-  birthday?: string;
+  birthday?: Date | null;
 
   @IsOptional()
   @MaxLength(20)

@@ -88,6 +88,15 @@ export class StudentsController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Put('parents/:parentId/zalo-name')
+  updateParentZaloName(
+    @Param('parentId', ParseIntPipe) parentId: number,
+    @Body('zaloName') zaloName: string,
+  ) {
+    return this.studentsService.updateParentZaloName(parentId, zaloName);
+  }
+
+  @Roles(UserRole.ADMIN)
   @Put(':id/is-called')
   toggleIsCalled(
     @Param('id', ParseIntPipe) id: number,

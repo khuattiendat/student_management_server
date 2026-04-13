@@ -11,7 +11,7 @@ export declare class Student extends BaseEntity {
     isCalled: boolean;
     isTexted: boolean;
     cycleStartDate: Date | null;
-    birthday: string;
+    birthday?: Date | null;
     addressDetail: string;
     provinceCode: number;
     wardCode: number;

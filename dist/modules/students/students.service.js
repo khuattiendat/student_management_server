@@ -91,7 +91,8 @@ let StudentsService = class StudentsService {
             .leftJoinAndSelect('student.classStudents', 'classStudents')
             .leftJoinAndSelect('classStudents.classEntity', 'classEntity')
             .distinct(true)
-            .orderBy('student.id', 'DESC')
+            .orderBy('parent.name', 'DESC')
+            .addOrderBy('student.id', 'DESC')
             .skip((page - 1) * limit)
             .take(limit);
         if (search) {
@@ -131,6 +132,16 @@ let StudentsService = class StudentsService {
         if (query.isTexted) {
             const isTexted = Number(query.isTexted) === 1;
             queryBuilder.andWhere('student.isTexted = :isTexted', { isTexted });
+        }
+        if (query.packageType) {
+            queryBuilder.andWhere('package.type = :packageType', {
+                packageType: query.packageType,
+            });
+        }
+        if (query.birthMonth) {
+            queryBuilder.andWhere('MONTH(student.birthday) = :birthMonth', {
+                birthMonth: query.birthMonth,
+            });
         }
         const [items, total] = await queryBuilder.getManyAndCount();
         const sessionStats = await this.getStudentSessionStats(items.map((student) => student.id));
@@ -362,6 +373,20 @@ let StudentsService = class StudentsService {
             id,
         };
     }
+    async updateParentZaloName(parentId, zaloName) {
+        const parent = await this.parentRepository.findOne({
+            where: { id: parentId },
+        });
+        if (!parent) {
+            throw new common_1.NotFoundException(`Parent with id ${parentId} not found`);
+        }
+        parent.zaloName = zaloName;
+        await this.parentRepository.save(parent);
+        return {
+            message: `Parent zaloName updated to ${zaloName}`,
+            parentId,
+        };
+    }
     async updateIsCalled(id, isCalled) {
         const student = await this.findStudentEntityById(id);
         student.isCalled = isCalled;
@@ -572,9 +597,15 @@ let StudentsService = class StudentsService {
             return [];
         }
         const parentRepository = manager?.getRepository(parent_entity_1.Parent) ?? this.parentRepository;
+        const normalizedInputs = parentInputs.map((input) => ({
+            ...input,
+            name: input.name?.trim(),
+            phone: input.phone?.trim(),
+            email: input.email?.trim(),
+        }));
         const existingParentIds = [
-            ...new Set(parentInputs
-                .map((parentInput) => parentInput.id)
+            ...new Set(normalizedInputs
+                .map((input) => input.id)
                 .filter((id) => id !== undefined)),
         ];
         const existingParents = existingParentIds.length > 0
@@ -586,29 +617,83 @@ let StudentsService = class StudentsService {
             throw new common_1.BadRequestException(`Invalid parent ids: ${missingIds.join(', ')}`);
         }
         const existingParentMap = new Map(existingParents.map((parent) => [parent.id, parent]));
-        const newParentPayloads = parentInputs
-            .filter((parentInput) => parentInput.id === undefined)
-            .map((parentInput) => ({
-            name: parentInput.name,
-            phone: parentInput.phone,
-            email: parentInput.email,
-        }));
-        const createdParents = newParentPayloads.length > 0
-            ? await parentRepository.save(parentRepository.create(newParentPayloads))
+        const phones = [
+            ...new Set(normalizedInputs
+                .map((input) => input.phone)
+                .filter((phone) => Boolean(phone))),
+        ];
+        const parentsByPhone = phones.length > 0
+            ? await parentRepository.find({ where: { phone: (0, typeorm_2.In)(phones) } })
             : [];
-        let createdParentIndex = 0;
-        const resolvedParents = parentInputs.map((parentInput) => {
-            if (parentInput.id !== undefined) {
-                const existingParent = existingParentMap.get(parentInput.id);
-                if (!existingParent) {
-                    throw new common_1.BadRequestException(`Invalid parent id: ${parentInput.id}`);
-                }
-                return existingParent;
+        const parentByPhoneMap = new Map();
+        for (const parent of parentsByPhone) {
+            const phone = parent.phone?.trim();
+            if (!phone) {
+                continue;
             }
-            const createdParent = createdParents[createdParentIndex];
-            createdParentIndex += 1;
-            return createdParent;
-        });
+            const duplicated = parentByPhoneMap.get(phone);
+            if (duplicated && duplicated.id !== parent.id) {
+                throw new common_1.BadRequestException(`Duplicated phone in database: ${phone}`);
+            }
+            parentByPhoneMap.set(phone, parent);
+        }
+        const modifiedParents = new Map();
+        const resolvedParents = [];
+        for (const input of normalizedInputs) {
+            const inputPhone = input.phone;
+            let targetParent;
+            if (inputPhone) {
+                targetParent = parentByPhoneMap.get(inputPhone);
+            }
+            if (!targetParent && input.id !== undefined) {
+                targetParent = existingParentMap.get(input.id);
+                if (!targetParent) {
+                    throw new common_1.BadRequestException(`Invalid parent id: ${input.id}`);
+                }
+            }
+            if (targetParent) {
+                const oldPhone = targetParent.phone?.trim();
+                let changed = false;
+                if (input.name !== undefined && input.name !== targetParent.name) {
+                    targetParent.name = input.name;
+                    changed = true;
+                }
+                if (input.email !== undefined && input.email !== targetParent.email) {
+                    targetParent.email = input.email;
+                    changed = true;
+                }
+                if (inputPhone !== undefined && inputPhone !== targetParent.phone) {
+                    targetParent.phone = inputPhone;
+                    changed = true;
+                }
+                if (changed) {
+                    modifiedParents.set(targetParent.id, targetParent);
+                    if (oldPhone && oldPhone !== targetParent.phone) {
+                        parentByPhoneMap.delete(oldPhone);
+                    }
+                    if (targetParent.phone) {
+                        parentByPhoneMap.set(targetParent.phone, targetParent);
+                    }
+                }
+                resolvedParents.push(targetParent);
+                continue;
+            }
+            if (!input.name) {
+                throw new common_1.BadRequestException('name is required when parent does not exist by id or phone');
+            }
+            const createdParent = await parentRepository.save(parentRepository.create({
+                name: input.name,
+                phone: inputPhone,
+                email: input.email,
+            }));
+            if (createdParent.phone) {
+                parentByPhoneMap.set(createdParent.phone, createdParent);
+            }
+            resolvedParents.push(createdParent);
+        }
+        if (modifiedParents.size > 0) {
+            await parentRepository.save([...modifiedParents.values()]);
+        }
         return this.uniqueParents(resolvedParents);
     }
     uniqueParents(parents) {

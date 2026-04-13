@@ -43,7 +43,7 @@ export declare class StudentsService {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;
@@ -78,7 +78,7 @@ export declare class StudentsService {
             isCalled: boolean;
             isTexted: boolean;
             cycleStartDate: Date | null;
-            birthday: string;
+            birthday?: Date | null;
             addressDetail: string;
             provinceCode: number;
             wardCode: number;
@@ -119,7 +119,7 @@ export declare class StudentsService {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;
@@ -163,7 +163,7 @@ export declare class StudentsService {
             isCalled: boolean;
             isTexted: boolean;
             cycleStartDate: Date | null;
-            birthday: string;
+            birthday?: Date | null;
             addressDetail: string;
             provinceCode: number;
             wardCode: number;
@@ -238,6 +238,10 @@ export declare class StudentsService {
         message: string;
         id: number;
     }>;
+    updateParentZaloName(parentId: number, zaloName: string): Promise<{
+        message: string;
+        parentId: number;
+    }>;
     updateIsCalled(id: number, isCalled: boolean): Promise<{
         message: string;
         id: number;
@@ -266,7 +270,7 @@ export declare class StudentsService {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;
@@ -300,7 +304,7 @@ export declare class StudentsService {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;

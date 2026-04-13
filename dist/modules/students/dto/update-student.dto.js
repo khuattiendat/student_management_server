@@ -56,7 +56,7 @@ __decorate([
 ], UpdateStudentDto.prototype, "wardName", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], UpdateStudentDto.prototype, "birthday", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),

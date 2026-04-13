@@ -127,7 +127,8 @@ export class StudentsService {
       .leftJoinAndSelect('student.classStudents', 'classStudents')
       .leftJoinAndSelect('classStudents.classEntity', 'classEntity')
       .distinct(true)
-      .orderBy('student.id', 'DESC')
+      .orderBy('parent.name', 'DESC')
+      .addOrderBy('student.id', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -173,6 +174,18 @@ export class StudentsService {
     if (query.isTexted) {
       const isTexted = Number(query.isTexted) === 1;
       queryBuilder.andWhere('student.isTexted = :isTexted', { isTexted });
+    }
+
+    if (query.packageType) {
+      queryBuilder.andWhere('package.type = :packageType', {
+        packageType: query.packageType,
+      });
+    }
+
+    if (query.birthMonth) {
+      queryBuilder.andWhere('MONTH(student.birthday) = :birthMonth', {
+        birthMonth: query.birthMonth,
+      });
     }
 
     const [items, total] = await queryBuilder.getManyAndCount();
@@ -458,6 +471,20 @@ export class StudentsService {
     return {
       message: `Student cycleStartDate updated to ${cycleStartDate}`,
       id,
+    };
+  }
+  async updateParentZaloName(parentId: number, zaloName: string) {
+    const parent = await this.parentRepository.findOne({
+      where: { id: parentId },
+    });
+    if (!parent) {
+      throw new NotFoundException(`Parent with id ${parentId} not found`);
+    }
+    parent.zaloName = zaloName;
+    await this.parentRepository.save(parent);
+    return {
+      message: `Parent zaloName updated to ${zaloName}`,
+      parentId,
     };
   }
 
@@ -763,10 +790,17 @@ export class StudentsService {
     const parentRepository =
       manager?.getRepository(Parent) ?? this.parentRepository;
 
+    const normalizedInputs = parentInputs.map((input) => ({
+      ...input,
+      name: input.name?.trim(),
+      phone: input.phone?.trim(),
+      email: input.email?.trim(),
+    }));
+
     const existingParentIds = [
       ...new Set(
-        parentInputs
-          .map((parentInput) => parentInput.id)
+        normalizedInputs
+          .map((input) => input.id)
           .filter((id): id is number => id !== undefined),
       ),
     ];
@@ -788,35 +822,110 @@ export class StudentsService {
       existingParents.map((parent) => [parent.id, parent]),
     );
 
-    const newParentPayloads = parentInputs
-      .filter((parentInput) => parentInput.id === undefined)
-      .map((parentInput) => ({
-        name: parentInput.name as string,
-        phone: parentInput.phone,
-        email: parentInput.email,
-      }));
+    const phones = [
+      ...new Set(
+        normalizedInputs
+          .map((input) => input.phone)
+          .filter((phone): phone is string => Boolean(phone)),
+      ),
+    ];
 
-    const createdParents =
-      newParentPayloads.length > 0
-        ? await parentRepository.save(
-            parentRepository.create(newParentPayloads),
-          )
+    const parentsByPhone =
+      phones.length > 0
+        ? await parentRepository.find({ where: { phone: In(phones) } })
         : [];
 
-    let createdParentIndex = 0;
-    const resolvedParents: Parent[] = parentInputs.map((parentInput) => {
-      if (parentInput.id !== undefined) {
-        const existingParent = existingParentMap.get(parentInput.id);
-        if (!existingParent) {
-          throw new BadRequestException(`Invalid parent id: ${parentInput.id}`);
-        }
-        return existingParent;
+    const parentByPhoneMap = new Map<string, Parent>();
+    for (const parent of parentsByPhone) {
+      const phone = parent.phone?.trim();
+      if (!phone) {
+        continue;
+      }
+      const duplicated = parentByPhoneMap.get(phone);
+      if (duplicated && duplicated.id !== parent.id) {
+        throw new BadRequestException(`Duplicated phone in database: ${phone}`);
+      }
+      parentByPhoneMap.set(phone, parent);
+    }
+
+    const modifiedParents = new Map<number, Parent>();
+    const resolvedParents: Parent[] = [];
+
+    for (const input of normalizedInputs) {
+      const inputPhone = input.phone;
+      let targetParent: Parent | undefined;
+
+      // Prefer matching by phone to reuse existing parent records.
+      if (inputPhone) {
+        targetParent = parentByPhoneMap.get(inputPhone);
       }
 
-      const createdParent = createdParents[createdParentIndex];
-      createdParentIndex += 1;
-      return createdParent;
-    });
+      // Fallback to id only when phone is not found.
+      if (!targetParent && input.id !== undefined) {
+        targetParent = existingParentMap.get(input.id);
+        if (!targetParent) {
+          throw new BadRequestException(`Invalid parent id: ${input.id}`);
+        }
+      }
+
+      if (targetParent) {
+        const oldPhone = targetParent.phone?.trim();
+        let changed = false;
+
+        if (input.name !== undefined && input.name !== targetParent.name) {
+          targetParent.name = input.name;
+          changed = true;
+        }
+
+        if (input.email !== undefined && input.email !== targetParent.email) {
+          targetParent.email = input.email;
+          changed = true;
+        }
+
+        if (inputPhone !== undefined && inputPhone !== targetParent.phone) {
+          targetParent.phone = inputPhone;
+          changed = true;
+        }
+
+        if (changed) {
+          modifiedParents.set(targetParent.id, targetParent);
+
+          if (oldPhone && oldPhone !== targetParent.phone) {
+            parentByPhoneMap.delete(oldPhone);
+          }
+          if (targetParent.phone) {
+            parentByPhoneMap.set(targetParent.phone, targetParent);
+          }
+        }
+
+        resolvedParents.push(targetParent);
+        continue;
+      }
+
+      if (!input.name) {
+        throw new BadRequestException(
+          'name is required when parent does not exist by id or phone',
+        );
+      }
+
+      const createdParent = await parentRepository.save(
+        parentRepository.create({
+          name: input.name,
+          phone: inputPhone,
+          email: input.email,
+        }),
+      );
+
+      if (createdParent.phone) {
+        parentByPhoneMap.set(createdParent.phone, createdParent);
+      }
+
+      resolvedParents.push(createdParent);
+    }
+
+    if (modifiedParents.size > 0) {
+      await parentRepository.save([...modifiedParents.values()]);
+    }
 
     return this.uniqueParents(resolvedParents);
   }

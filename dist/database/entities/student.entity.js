@@ -84,9 +84,9 @@ __decorate([
     (0, typeorm_1.Column)({
         nullable: true,
         name: 'birthday',
-        type: 'varchar',
+        type: 'date',
     }),
-    __metadata("design:type", String)
+    __metadata("design:type", Object)
 ], Student.prototype, "birthday", void 0);
 __decorate([
     (0, typeorm_1.Column)({

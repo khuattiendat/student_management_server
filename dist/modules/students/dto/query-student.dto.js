@@ -12,12 +12,15 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.QueryStudentDto = void 0;
 const class_validator_1 = require("class-validator");
 const base_QueryDto_1 = require("../../../common/base/base.QueryDto");
+const package_entity_1 = require("../../../database/entities/package.entity");
 class QueryStudentDto extends base_QueryDto_1.BaseQueryDto {
     branchId;
     packageId;
     classId;
     isCalled;
     isTexted;
+    packageType;
+    birthMonth;
 }
 exports.QueryStudentDto = QueryStudentDto;
 __decorate([
@@ -40,4 +43,13 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], QueryStudentDto.prototype, "isTexted", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(package_entity_1.PackageType),
+    __metadata("design:type", String)
+], QueryStudentDto.prototype, "packageType", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Number)
+], QueryStudentDto.prototype, "birthMonth", void 0);
 //# sourceMappingURL=query-student.dto.js.map

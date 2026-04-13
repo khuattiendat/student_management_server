@@ -26,7 +26,7 @@ export declare class StudentsController {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;
@@ -61,7 +61,7 @@ export declare class StudentsController {
             isCalled: boolean;
             isTexted: boolean;
             cycleStartDate: Date | null;
-            birthday: string;
+            birthday?: Date | null;
             addressDetail: string;
             provinceCode: number;
             wardCode: number;
@@ -103,7 +103,7 @@ export declare class StudentsController {
             isCalled: boolean;
             isTexted: boolean;
             cycleStartDate: Date | null;
-            birthday: string;
+            birthday?: Date | null;
             addressDetail: string;
             provinceCode: number;
             wardCode: number;
@@ -185,7 +185,7 @@ export declare class StudentsController {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;
@@ -232,7 +232,7 @@ export declare class StudentsController {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;
@@ -254,6 +254,10 @@ export declare class StudentsController {
     updateCycleStartDate(id: number, cycleStartDate: Date | null): Promise<{
         message: string;
         id: number;
+    }>;
+    updateParentZaloName(parentId: number, zaloName: string): Promise<{
+        message: string;
+        parentId: number;
     }>;
     toggleIsCalled(id: number, isCalled: boolean): Promise<{
         message: string;
@@ -283,7 +287,7 @@ export declare class StudentsController {
         isCalled: boolean;
         isTexted: boolean;
         cycleStartDate: Date | null;
-        birthday: string;
+        birthday?: Date | null;
         addressDetail: string;
         provinceCode: number;
         wardCode: number;

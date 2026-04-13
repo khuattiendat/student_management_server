@@ -34,7 +34,7 @@ export class UpdateStudentDto {
   wardName?: string;
 
   @IsOptional()
-  birthday?: string;
+  birthday?: Date | null;
 
   @IsOptional()
   @MaxLength(20)

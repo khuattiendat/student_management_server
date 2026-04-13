@@ -60,6 +60,9 @@ let StudentsController = class StudentsController {
     updateCycleStartDate(id, cycleStartDate) {
         return this.studentsService.updateCycleStartDate(id, cycleStartDate);
     }
+    updateParentZaloName(parentId, zaloName) {
+        return this.studentsService.updateParentZaloName(parentId, zaloName);
+    }
     toggleIsCalled(id, isCalled) {
         return this.studentsService.updateIsCalled(id, isCalled);
     }
@@ -153,6 +156,15 @@ __decorate([
     __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "updateCycleStartDate", null);
+__decorate([
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, common_1.Put)('parents/:parentId/zalo-name'),
+    __param(0, (0, common_1.Param)('parentId', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)('zaloName')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, String]),
+    __metadata("design:returntype", void 0)
+], StudentsController.prototype, "updateParentZaloName", null);
 __decorate([
     (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
     (0, common_1.Put)(':id/is-called'),
