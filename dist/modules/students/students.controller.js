@@ -28,6 +28,7 @@ const user_entity_1 = require("../../database/entities/user.entity");
 const base_QueryDto_1 = require("../../common/base/base.QueryDto");
 const cycle_dto_1 = require("./dto/cycle.dto");
 const updateIsPaidEnrollment_dto_1 = require("./dto/updateIsPaidEnrollment.dto");
+const updateEnrollments_dto_1 = require("./dto/updateEnrollments.dto");
 let StudentsController = class StudentsController {
     studentsService;
     constructor(studentsService) {
@@ -71,6 +72,9 @@ let StudentsController = class StudentsController {
     }
     toggleIsPaid(id, enrollmentId, data) {
         return this.studentsService.updateIsPaidEnrollment(id, enrollmentId, data);
+    }
+    updateEnrollments(id, data) {
+        return this.studentsService.updateEnrollments(id, data);
     }
     renewCourse(id, renewStudentCourseDto) {
         return this.studentsService.renewCourse(id, renewStudentCourseDto);
@@ -193,6 +197,15 @@ __decorate([
     __metadata("design:paramtypes", [Number, Number, updateIsPaidEnrollment_dto_1.UpdateIsPaidEnrollmentDto]),
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "toggleIsPaid", null);
+__decorate([
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, common_1.Put)(':id/enrollments'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, updateEnrollments_dto_1.UpdateEnrollmentsDto]),
+    __metadata("design:returntype", void 0)
+], StudentsController.prototype, "updateEnrollments", null);
 __decorate([
     (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
     (0, common_1.Post)(':id/renew-course'),

@@ -8,6 +8,7 @@ import { QueryStudentsByEnrollmentsDto } from './dto/query-students-by-enrollmen
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { CycleDto } from './dto/cycle.dto';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
+import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
 export declare class StudentsController {
     private readonly studentsService;
     constructor(studentsService: StudentsService);
@@ -271,6 +272,40 @@ export declare class StudentsController {
         message: string;
         enrollmentId: number;
         studentId: number;
+    }>;
+    updateEnrollments(id: number, data: UpdateEnrollmentsDto): Promise<{
+        packageIds: number[];
+        packages: import("../../database/entities/package.entity").Package[];
+        remainingByPackage: {
+            packageId: number;
+            packageName: string;
+            remainingSessions: number;
+        }[];
+        learnedSessions: number;
+        remainingSessions: number;
+        branchId: number | null;
+        name: string;
+        isCalled: boolean;
+        isTexted: boolean;
+        cycleStartDate: Date | null;
+        birthday?: Date | null;
+        addressDetail: string;
+        provinceCode: number;
+        wardCode: number;
+        provinceName: string;
+        wardName: string;
+        phone: string;
+        deletedByBranchId: number | null;
+        branch: import("../../database/entities/branch.entity").Branch | null;
+        enrollments: import("../../database/entities/enrollment.entity").Enrollment[];
+        attendances: import("../../database/entities/attendance.entity").Attendance[];
+        parents: import("../../database/entities/parent.entity").Parent[];
+        classStudents: import("../../database/entities/class_student.entity").ClassStudent[];
+        remainings: import("../../database/entities/student_remainings.entity").StudentRemainings[];
+        id: number;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        deletedAt: Date | null;
     }>;
     renewCourse(id: number, renewStudentCourseDto: RenewStudentCourseDto): Promise<{
         packageIds: number[];

@@ -24,6 +24,7 @@ import { UserRole } from '@/database/entities/user.entity';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { CycleDto } from './dto/cycle.dto';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
+import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.TEACHER)
@@ -121,6 +122,14 @@ export class StudentsController {
     @Body() data: UpdateIsPaidEnrollmentDto,
   ) {
     return this.studentsService.updateIsPaidEnrollment(id, enrollmentId, data);
+  }
+  @Roles(UserRole.ADMIN)
+  @Put(':id/enrollments')
+  updateEnrollments(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() data: UpdateEnrollmentsDto,
+  ) {
+    return this.studentsService.updateEnrollments(id, data);
   }
 
   @Roles(UserRole.ADMIN)

@@ -17,6 +17,7 @@ import { ClassStudent } from '@/database/entities/class_student.entity';
 import { Session } from '@/database/entities/session.entity';
 import { Class } from '@/database/entities/class.entity';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
+import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
 export declare class StudentsService {
     private readonly studentRepository;
     private readonly branchRepository;
@@ -254,6 +255,40 @@ export declare class StudentsService {
         message: string;
         enrollmentId: number;
         studentId: number;
+    }>;
+    updateEnrollments(id: number, data: UpdateEnrollmentsDto): Promise<{
+        packageIds: number[];
+        packages: Package[];
+        remainingByPackage: {
+            packageId: number;
+            packageName: string;
+            remainingSessions: number;
+        }[];
+        learnedSessions: number;
+        remainingSessions: number;
+        branchId: number | null;
+        name: string;
+        isCalled: boolean;
+        isTexted: boolean;
+        cycleStartDate: Date | null;
+        birthday?: Date | null;
+        addressDetail: string;
+        provinceCode: number;
+        wardCode: number;
+        provinceName: string;
+        wardName: string;
+        phone: string;
+        deletedByBranchId: number | null;
+        branch: Branch | null;
+        enrollments: Enrollment[];
+        attendances: Attendance[];
+        parents: Parent[];
+        classStudents: ClassStudent[];
+        remainings: import("../../database/entities/student_remainings.entity").StudentRemainings[];
+        id: number;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        deletedAt: Date | null;
     }>;
     update(id: number, updateStudentDto: UpdateStudentDto): Promise<{
         packageIds: number[];

@@ -7,14 +7,14 @@ import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interf
 export declare class ClassesController {
     private readonly classesService;
     constructor(classesService: ClassesService);
-    create(createClassDto: CreateClassDto): Promise<Omit<import("../../database/entities/class.entity").Class, "classStudents" | "sessions" | "classPackages"> & {
+    create(createClassDto: CreateClassDto): Promise<Omit<import("../../database/entities/class.entity").Class, "classStudents" | "classPackages" | "sessions"> & {
         students: import("../../database/entities/student.entity").Student[];
         studentIds: number[];
         packages: import("../../database/entities/package.entity").Package[];
         packageIds: number[];
     }>;
     findAll(query: QueryClassDto, user: AuthenticatedUser): Promise<{
-        items: (Omit<import("../../database/entities/class.entity").Class, "classStudents" | "sessions" | "classPackages"> & {
+        items: (Omit<import("../../database/entities/class.entity").Class, "classStudents" | "classPackages" | "sessions"> & {
             students: import("../../database/entities/student.entity").Student[];
             studentIds: number[];
             packages: import("../../database/entities/package.entity").Package[];
@@ -36,13 +36,13 @@ export declare class ClassesController {
             totalPages: number;
         };
     }>;
-    findOne(id: number): Promise<Omit<import("../../database/entities/class.entity").Class, "classStudents" | "sessions" | "classPackages"> & {
+    findOne(id: number): Promise<Omit<import("../../database/entities/class.entity").Class, "classStudents" | "classPackages" | "sessions"> & {
         students: import("../../database/entities/student.entity").Student[];
         studentIds: number[];
         packages: import("../../database/entities/package.entity").Package[];
         packageIds: number[];
     }>;
-    update(id: number, updateClassDto: UpdateClassDto): Promise<Omit<import("../../database/entities/class.entity").Class, "classStudents" | "sessions" | "classPackages"> & {
+    update(id: number, updateClassDto: UpdateClassDto): Promise<Omit<import("../../database/entities/class.entity").Class, "classStudents" | "classPackages" | "sessions"> & {
         students: import("../../database/entities/student.entity").Student[];
         studentIds: number[];
         packages: import("../../database/entities/package.entity").Package[];

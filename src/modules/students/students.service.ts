@@ -27,6 +27,8 @@ import { ClassStudent } from '@/database/entities/class_student.entity';
 import { Session } from '@/database/entities/session.entity';
 import { Class } from '@/database/entities/class.entity';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
+import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
+import { ClassPackage } from '@/database/entities/class_packages.entity';
 
 @Injectable()
 export class StudentsService {
@@ -527,6 +529,117 @@ export class StudentsService {
       enrollmentId,
       studentId: id,
     };
+  }
+  async updateEnrollments(id: number, data: UpdateEnrollmentsDto) {
+    const oldPackageId = Number(data.oldPackageId);
+    const newPackageId = Number(data.newPackageId);
+    const { isPaid } = data;
+
+    if (!Number.isInteger(oldPackageId) || oldPackageId < 1) {
+      throw new BadRequestException('oldPackageId must be a positive integer');
+    }
+
+    if (!Number.isInteger(newPackageId) || newPackageId < 1) {
+      throw new BadRequestException('newPackageId must be a positive integer');
+    }
+
+    if (oldPackageId === newPackageId) {
+      throw new BadRequestException(
+        'oldPackageId and newPackageId must be different',
+      );
+    }
+
+    return this.studentRepository.manager.transaction(async (manager) => {
+      const student = await this.findStudentEntityById(id, manager);
+
+      const oldEnrollment = student.enrollments.find(
+        (enrollment) => enrollment.packageId === oldPackageId,
+      );
+
+      if (!oldEnrollment) {
+        throw new NotFoundException(
+          `Enrollment with packageId ${oldPackageId} for student ${id} not found`,
+        );
+      }
+
+      const duplicatedNewEnrollment = student.enrollments.find(
+        (enrollment) => enrollment.packageId === newPackageId,
+      );
+
+      if (duplicatedNewEnrollment) {
+        throw new BadRequestException(
+          'Gói mới đã tồn tại trong enrollments của học viên, không thể cập nhật',
+        );
+      }
+
+      const [oldPackage, newPackage] = await Promise.all([
+        this.ensurePackagesExist([oldPackageId], manager).then(
+          (packages) => packages[0],
+        ),
+        this.ensurePackagesExist([newPackageId], manager).then(
+          (packages) => packages[0],
+        ),
+      ]);
+
+      const learnedSessions =
+        Number(oldPackage.totalSessions ?? 0) -
+        Number(oldEnrollment.remainingSessions ?? 0);
+
+      const nextRemainingSessions =
+        Number(newPackage.totalSessions ?? 0) - learnedSessions;
+
+      await manager.getRepository(Enrollment).update(
+        { id: oldEnrollment.id },
+        {
+          packageId: newPackageId,
+          isPaid,
+          remainingSessions: nextRemainingSessions,
+        },
+      );
+
+      const classStudents = await manager
+        .getRepository(ClassStudent)
+        .find({ where: { studentId: id } });
+
+      const classIds = classStudents.map(
+        (classStudent) => classStudent.classId,
+      );
+      if (classIds.length > 0) {
+        const classPackageRepository = manager.getRepository(ClassPackage);
+        const classPackages = await classPackageRepository.find({
+          where: { classId: In(classIds) },
+        });
+
+        const packageIdsByClassId = new Map<number, Set<number>>();
+        classPackages.forEach((classPackage) => {
+          const existingSet =
+            packageIdsByClassId.get(classPackage.classId) ?? new Set<number>();
+          existingSet.add(classPackage.packageId);
+          packageIdsByClassId.set(classPackage.classId, existingSet);
+        });
+
+        const classPackagesToCreate: ClassPackage[] = [];
+        classIds.forEach((classId) => {
+          const packageIds = packageIdsByClassId.get(classId) ?? new Set();
+
+          if (packageIds.has(oldPackageId) && !packageIds.has(newPackageId)) {
+            classPackagesToCreate.push(
+              classPackageRepository.create({
+                classId,
+                packageId: newPackageId,
+              }),
+            );
+          }
+        });
+
+        if (classPackagesToCreate.length > 0) {
+          await classPackageRepository.save(classPackagesToCreate);
+        }
+      }
+
+      const updatedStudent = await this.findStudentEntityById(id, manager);
+      return this.buildStudentProfile(updatedStudent);
+    });
   }
 
   async update(id: number, updateStudentDto: UpdateStudentDto) {

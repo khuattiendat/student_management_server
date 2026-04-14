@@ -63,10 +63,10 @@ export class ClassesService {
           manager,
         );
         // Validate all packages match class type
-        packageEntities.forEach((pkg) => {
-          const packageClassType = this.toClassType(pkg.type);
-          this.ensureClassTypeMatchesPackageType(classType, packageClassType);
-        });
+        // packageEntities.forEach((pkg) => {
+        //   const packageClassType = this.toClassType(pkg.type);
+        //   this.ensureClassTypeMatchesPackageType(classType, packageClassType);
+        // });
         // For CERTIFICATE type with multiple packages, select the one with max total_sessions
         selectedPackage = this.selectSessionPackage(classType, packageEntities);
       }
@@ -298,10 +298,10 @@ export class ClassesService {
       );
     }
     const nextType = updateClassDto.type ?? classEntity.type;
-    effectivePackages.forEach((pkg) => {
-      const packageClassType = this.toClassType(pkg.type);
-      this.ensureClassTypeMatchesPackageType(nextType, packageClassType);
-    });
+    // effectivePackages.forEach((pkg) => {
+    //   const packageClassType = this.toClassType(pkg.type);
+    //   this.ensureClassTypeMatchesPackageType(nextType, packageClassType);
+    // });
     const selectedPackage = this.selectSessionPackage(
       nextType,
       effectivePackages,

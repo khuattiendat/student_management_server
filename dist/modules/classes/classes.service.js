@@ -52,10 +52,6 @@ let ClassesService = class ClassesService {
             let selectedPackage = null;
             if (packageIds.length > 0) {
                 const packageEntities = await this.ensurePackagesExist(packageIds, manager);
-                packageEntities.forEach((pkg) => {
-                    const packageClassType = this.toClassType(pkg.type);
-                    this.ensureClassTypeMatchesPackageType(classType, packageClassType);
-                });
                 selectedPackage = this.selectSessionPackage(classType, packageEntities);
             }
             const normalizedWeekdays = this.normalizeWeekdays(createClassDto.weekdays);
@@ -221,10 +217,6 @@ let ClassesService = class ClassesService {
             classEntity.teacher = await this.ensureTeacherExists(updateClassDto.teacherId);
         }
         const nextType = updateClassDto.type ?? classEntity.type;
-        effectivePackages.forEach((pkg) => {
-            const packageClassType = this.toClassType(pkg.type);
-            this.ensureClassTypeMatchesPackageType(nextType, packageClassType);
-        });
         const selectedPackage = this.selectSessionPackage(nextType, effectivePackages);
         classEntity.packageId = selectedPackage?.id ?? null;
         const nextWeekdays = this.normalizeWeekdays(updateClassDto.weekdays ?? classEntity.weekdays);
