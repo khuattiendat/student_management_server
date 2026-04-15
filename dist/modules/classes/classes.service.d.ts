@@ -18,14 +18,14 @@ export declare class ClassesService {
     private readonly studentRepository;
     private readonly sessionRepository;
     constructor(classRepository: Repository<Class>, branchRepository: Repository<Branch>, userRepository: Repository<User>, packageRepository: Repository<Package>, studentRepository: Repository<Student>, sessionRepository: Repository<Session>);
-    create(createClassDto: CreateClassDto): Promise<Omit<Class, "classStudents" | "classPackages" | "sessions"> & {
+    create(createClassDto: CreateClassDto): Promise<Omit<Class, "classStudents" | "sessions" | "classPackages"> & {
         students: Student[];
         studentIds: number[];
         packages: Package[];
         packageIds: number[];
     }>;
     findAll(query: QueryClassDto, user: AuthenticatedUser): Promise<{
-        items: (Omit<Class, "classStudents" | "classPackages" | "sessions"> & {
+        items: (Omit<Class, "classStudents" | "sessions" | "classPackages"> & {
             students: Student[];
             studentIds: number[];
             packages: Package[];
@@ -47,13 +47,13 @@ export declare class ClassesService {
             totalPages: number;
         };
     }>;
-    findOne(id: number): Promise<Omit<Class, "classStudents" | "classPackages" | "sessions"> & {
+    findOne(id: number): Promise<Omit<Class, "classStudents" | "sessions" | "classPackages"> & {
         students: Student[];
         studentIds: number[];
         packages: Package[];
         packageIds: number[];
     }>;
-    update(id: number, updateClassDto: UpdateClassDto): Promise<Omit<Class, "classStudents" | "classPackages" | "sessions"> & {
+    update(id: number, updateClassDto: UpdateClassDto): Promise<Omit<Class, "classStudents" | "sessions" | "classPackages"> & {
         students: Student[];
         studentIds: number[];
         packages: Package[];

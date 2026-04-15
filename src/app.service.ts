@@ -7,7 +7,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Branch } from './database/entities/branch.entity';
 import { Student } from './database/entities/student.entity';
-import { UserRole } from './database/entities/user.entity';
+import { User, UserRole } from './database/entities/user.entity';
 import { Class } from './database/entities/class.entity';
 import { ClassStudent } from './database/entities/class_student.entity';
 
@@ -108,27 +108,18 @@ export class AppService {
 
   private async getTeachersTotal(branchId: number | null): Promise<number> {
     const qb = this.dataSource
-      .getRepository(Class)
-      .createQueryBuilder('classEntity')
-      .innerJoin('classEntity.branch', 'branch')
-      .leftJoin('classEntity.teacher', 'teacher')
-      .where('classEntity.deletedAt IS NULL')
-      .andWhere('branch.deletedAt IS NULL')
-      .andWhere('classEntity.teacherId IS NOT NULL')
-      .andWhere('teacher.deletedAt IS NULL')
-      .andWhere('teacher.role = :teacherRole', {
-        teacherRole: UserRole.TEACHER,
-      });
+      .getRepository(User)
+      .createQueryBuilder('user')
+      .innerJoin('user.branches', 'branch')
+      .where('user.deletedAt IS NULL')
+      .andWhere('user.role = :teacherRole', { teacherRole: UserRole.TEACHER })
+      .andWhere('branch.deletedAt IS NULL');
 
     if (branchId) {
       qb.andWhere('branch.id = :branchId', { branchId });
     }
 
-    const row = await qb
-      .select('COUNT(DISTINCT classEntity.teacherId)', 'total')
-      .getRawOne<{ total: string }>();
-
-    return Number(row?.total ?? 0);
+    return qb.getCount();
   }
 
   private async getNewStudentsLast6Months(

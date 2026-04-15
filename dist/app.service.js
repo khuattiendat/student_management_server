@@ -103,24 +103,16 @@ let AppService = class AppService {
     }
     async getTeachersTotal(branchId) {
         const qb = this.dataSource
-            .getRepository(class_entity_1.Class)
-            .createQueryBuilder('classEntity')
-            .innerJoin('classEntity.branch', 'branch')
-            .leftJoin('classEntity.teacher', 'teacher')
-            .where('classEntity.deletedAt IS NULL')
-            .andWhere('branch.deletedAt IS NULL')
-            .andWhere('classEntity.teacherId IS NOT NULL')
-            .andWhere('teacher.deletedAt IS NULL')
-            .andWhere('teacher.role = :teacherRole', {
-            teacherRole: user_entity_1.UserRole.TEACHER,
-        });
+            .getRepository(user_entity_1.User)
+            .createQueryBuilder('user')
+            .innerJoin('user.branches', 'branch')
+            .where('user.deletedAt IS NULL')
+            .andWhere('user.role = :teacherRole', { teacherRole: user_entity_1.UserRole.TEACHER })
+            .andWhere('branch.deletedAt IS NULL');
         if (branchId) {
             qb.andWhere('branch.id = :branchId', { branchId });
         }
-        const row = await qb
-            .select('COUNT(DISTINCT classEntity.teacherId)', 'total')
-            .getRawOne();
-        return Number(row?.total ?? 0);
+        return qb.getCount();
     }
     async getNewStudentsLast6Months(branchId) {
         const fromDate = new Date();
