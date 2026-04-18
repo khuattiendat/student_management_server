@@ -25,6 +25,9 @@ export class AttendanceStudentItemDto {
   @IsInt()
   @Min(0)
   rate?: number;
+
+  @IsOptional()
+  note?: string;
 }
 
 export class BulkAttendanceDto {

@@ -25,6 +25,7 @@ const class_student_entity_1 = require("../../database/entities/class_student.en
 const session_entity_1 = require("../../database/entities/session.entity");
 const attendance_entity_1 = require("../../database/entities/attendance.entity");
 const class_packages_entity_1 = require("../../database/entities/class_packages.entity");
+const users_service_1 = require("../users/users.service");
 let ClassesService = class ClassesService {
     classRepository;
     branchRepository;
@@ -32,13 +33,15 @@ let ClassesService = class ClassesService {
     packageRepository;
     studentRepository;
     sessionRepository;
-    constructor(classRepository, branchRepository, userRepository, packageRepository, studentRepository, sessionRepository) {
+    userService;
+    constructor(classRepository, branchRepository, userRepository, packageRepository, studentRepository, sessionRepository, userService) {
         this.classRepository = classRepository;
         this.branchRepository = branchRepository;
         this.userRepository = userRepository;
         this.packageRepository = packageRepository;
         this.studentRepository = studentRepository;
         this.sessionRepository = sessionRepository;
+        this.userService = userService;
     }
     async create(createClassDto) {
         const studentIds = this.normalizeStudentIds(createClassDto.studentIds);
@@ -89,6 +92,7 @@ let ClassesService = class ClassesService {
         const limit = Math.max(Number(query.limit) || 10, 1);
         const search = query.search?.trim();
         const isTeacher = user.role === user_entity_1.UserRole.TEACHER;
+        const isAdmin = user.role === user_entity_1.UserRole.ADMIN;
         const queryBuilder = this.classRepository
             .createQueryBuilder('class')
             .leftJoinAndSelect('class.branch', 'branch')
@@ -96,6 +100,14 @@ let ClassesService = class ClassesService {
             .orderBy('class.id', 'DESC')
             .skip((page - 1) * limit)
             .take(limit);
+        if (!isAdmin && !isTeacher) {
+            const branchIds = await this.userService.getBranchIdsForUser(user.sub);
+            if (branchIds.length > 0) {
+                queryBuilder.where('class.branchId IN (:...branchIds)', {
+                    branchIds,
+                });
+            }
+        }
         if (isTeacher) {
             queryBuilder.where('class.teacherId = :teacherId', {
                 teacherId: user.sub,
@@ -812,6 +824,7 @@ exports.ClassesService = ClassesService = __decorate([
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        typeorm_2.Repository])
+        typeorm_2.Repository,
+        users_service_1.UsersService])
 ], ClassesService);
 //# sourceMappingURL=classes.service.js.map

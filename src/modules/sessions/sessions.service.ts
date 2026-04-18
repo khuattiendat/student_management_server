@@ -90,6 +90,7 @@ export class SessionsService {
         if (existing) {
           existing.status = item.status;
           existing.rate = item.rate ?? null;
+          existing.note = item.note ?? null;
           return existing;
         }
 
@@ -98,6 +99,7 @@ export class SessionsService {
           studentId: item.studentId,
           status: item.status,
           rate: item.rate ?? null,
+          note: item.note ?? null,
         });
       });
 
@@ -200,6 +202,7 @@ export class SessionsService {
             studentId: item.studentId,
             status: item.status,
             rate: item.rate ?? null,
+            note: item.note ?? null,
           }),
         );
         await attendanceRepository.save(insertRows);
@@ -291,6 +294,7 @@ export class SessionsService {
         'attendance.studentId',
         'attendance.status',
         'attendance.rate',
+        'attendance.note',
       ])
       .orderBy('session.sessionDate', 'ASC')
       .skip((page - 1) * limit)
@@ -592,6 +596,7 @@ export class SessionsService {
         attendanceId: attendance?.id ?? null,
         status: attendance?.status ?? null,
         rate: attendance?.rate ?? null,
+        note: attendance?.note ?? null,
       };
     });
 

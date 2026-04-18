@@ -18,6 +18,8 @@ import { Session } from '@/database/entities/session.entity';
 import { Class } from '@/database/entities/class.entity';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
 import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UsersService } from '../users/users.service';
 export declare class StudentsService {
     private readonly studentRepository;
     private readonly branchRepository;
@@ -28,7 +30,8 @@ export declare class StudentsService {
     private readonly sessionRepository;
     private readonly classRepository;
     private readonly classStudentRepository;
-    constructor(studentRepository: Repository<Student>, branchRepository: Repository<Branch>, parentRepository: Repository<Parent>, packageRepository: Repository<Package>, enrollmentRepository: Repository<Enrollment>, attendanceRepository: Repository<Attendance>, sessionRepository: Repository<Session>, classRepository: Repository<Class>, classStudentRepository: Repository<ClassStudent>);
+    private readonly userService;
+    constructor(studentRepository: Repository<Student>, branchRepository: Repository<Branch>, parentRepository: Repository<Parent>, packageRepository: Repository<Package>, enrollmentRepository: Repository<Enrollment>, attendanceRepository: Repository<Attendance>, sessionRepository: Repository<Session>, classRepository: Repository<Class>, classStudentRepository: Repository<ClassStudent>, userService: UsersService);
     create(createStudentDto: CreateStudentDto): Promise<{
         packageIds: number[];
         packages: Package[];
@@ -63,7 +66,7 @@ export declare class StudentsService {
         updatedAt: Date | null;
         deletedAt: Date | null;
     }>;
-    findAll(query: QueryStudentDto): Promise<{
+    findAll(user: AuthenticatedUser, query: QueryStudentDto): Promise<{
         items: {
             packageIds: number[];
             packages: Package[];

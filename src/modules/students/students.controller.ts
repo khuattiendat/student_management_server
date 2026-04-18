@@ -25,22 +25,27 @@ import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { CycleDto } from './dto/cycle.dto';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
 import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.TEACHER)
+@Roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.RECEPTIONIST)
 @Controller('students')
 export class StudentsController {
   constructor(private readonly studentsService: StudentsService) {}
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Post()
   create(@Body() createStudentDto: CreateStudentDto) {
     return this.studentsService.create(createStudentDto);
   }
 
   @Get()
-  findAll(@Query() query: QueryStudentDto) {
-    return this.studentsService.findAll(query);
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: QueryStudentDto,
+  ) {
+    return this.studentsService.findAll(user, query);
   }
 
   @Get('by-enrollments')
@@ -71,7 +76,7 @@ export class StudentsController {
     return this.studentsService.findAttendances(id, query);
   }
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -88,7 +93,7 @@ export class StudentsController {
     return this.studentsService.updateCycleStartDate(id, cycleStartDate);
   }
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put('parents/:parentId/zalo-name')
   updateParentZaloName(
     @Param('parentId', ParseIntPipe) parentId: number,
@@ -97,7 +102,7 @@ export class StudentsController {
     return this.studentsService.updateParentZaloName(parentId, zaloName);
   }
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put(':id/is-called')
   toggleIsCalled(
     @Param('id', ParseIntPipe) id: number,
@@ -106,7 +111,7 @@ export class StudentsController {
     return this.studentsService.updateIsCalled(id, isCalled);
   }
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put(':id/is-texted')
   toggleIsTexted(
     @Param('id', ParseIntPipe) id: number,
@@ -114,7 +119,7 @@ export class StudentsController {
   ) {
     return this.studentsService.updateIsTexted(id, isTexted);
   }
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put(':id/enrollments/:enrollmentId/is-paid')
   toggleIsPaid(
     @Param('id', ParseIntPipe) id: number,
@@ -123,7 +128,7 @@ export class StudentsController {
   ) {
     return this.studentsService.updateIsPaidEnrollment(id, enrollmentId, data);
   }
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put(':id/enrollments')
   updateEnrollments(
     @Param('id', ParseIntPipe) id: number,
@@ -132,7 +137,7 @@ export class StudentsController {
     return this.studentsService.updateEnrollments(id, data);
   }
 
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Post(':id/renew-course')
   renewCourse(
     @Param('id', ParseIntPipe) id: number,

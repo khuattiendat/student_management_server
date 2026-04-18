@@ -20,7 +20,7 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { UserRole } from '@/database/entities/user.entity';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.TEACHER)
+@Roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.RECEPTIONIST)
 @Controller('packages')
 export class PackagesController {
   constructor(private readonly packagesService: PackagesService) {}

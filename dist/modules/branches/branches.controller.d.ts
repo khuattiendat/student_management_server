@@ -7,7 +7,7 @@ export declare class BranchesController {
     private readonly branchesService;
     constructor(branchesService: BranchesService);
     create(createBranchDto: CreateBranchDto): Promise<import("../../database/entities/branch.entity").Branch>;
-    findAll(query: BaseQueryDto): Promise<{
+    findAll(user: AuthenticatedUser, query: BaseQueryDto): Promise<{
         items: import("../../database/entities/branch.entity").Branch[];
         pagination: {
             total: number;

@@ -1,4 +1,4 @@
-import { UserStatus } from '@/database/entities/user.entity';
+import { UserRole, UserStatus } from '@/database/entities/user.entity';
 import { IsEnum, IsNotEmpty, IsOptional, MinLength } from 'class-validator';
 
 export class RegisterDto {
@@ -16,4 +16,8 @@ export class RegisterDto {
   status?: UserStatus;
   @IsOptional()
   branchIds?: number[];
+
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
 }

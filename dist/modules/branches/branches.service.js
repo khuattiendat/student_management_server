@@ -19,10 +19,13 @@ const typeorm_2 = require("typeorm");
 const branch_entity_1 = require("../../database/entities/branch.entity");
 const user_entity_1 = require("../../database/entities/user.entity");
 const student_entity_1 = require("../../database/entities/student.entity");
+const users_service_1 = require("../users/users.service");
 let BranchesService = class BranchesService {
     branchRepository;
-    constructor(branchRepository) {
+    userService;
+    constructor(branchRepository, userService) {
         this.branchRepository = branchRepository;
+        this.userService = userService;
     }
     async findAllWithClasses(user) {
         const userId = user.sub;
@@ -69,17 +72,32 @@ let BranchesService = class BranchesService {
         const branch = this.branchRepository.create(createBranchDto);
         return this.branchRepository.save(branch);
     }
-    async findAll(query) {
+    async findAll(user, query) {
         const page = Math.max(Number(query.page) || 1, 1);
         const limit = Math.max(Number(query.limit) || 10, 1);
         const search = query.search?.trim();
-        const where = search
-            ? [
-                { name: (0, typeorm_2.Like)(`%${search}%`) },
-                { address: (0, typeorm_2.Like)(`%${search}%`) },
-                { phone: (0, typeorm_2.Like)(`%${search}%`) },
-            ]
-            : undefined;
+        const { role, sub: userId } = user;
+        let where = {};
+        const isAdmin = role === user_entity_1.UserRole.ADMIN;
+        if (!isAdmin) {
+            const branchIds = await this.userService.getBranchIdsForUser(userId);
+            where = search
+                ? [
+                    { id: (0, typeorm_2.In)(branchIds), name: (0, typeorm_2.Like)(`%${search}%`) },
+                    { id: (0, typeorm_2.In)(branchIds), address: (0, typeorm_2.Like)(`%${search}%`) },
+                    { id: (0, typeorm_2.In)(branchIds), phone: (0, typeorm_2.Like)(`%${search}%`) },
+                ]
+                : { id: (0, typeorm_2.In)(branchIds) };
+        }
+        if (isAdmin) {
+            where = search
+                ? [
+                    { name: (0, typeorm_2.Like)(`%${search}%`) },
+                    { address: (0, typeorm_2.Like)(`%${search}%`) },
+                    { phone: (0, typeorm_2.Like)(`%${search}%`) },
+                ]
+                : undefined;
+        }
         const [items, total] = await this.branchRepository.findAndCount({
             where,
             order: { id: 'DESC' },
@@ -204,6 +222,7 @@ exports.BranchesService = BranchesService;
 exports.BranchesService = BranchesService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(branch_entity_1.Branch)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        users_service_1.UsersService])
 ], BranchesService);
 //# sourceMappingURL=branches.service.js.map

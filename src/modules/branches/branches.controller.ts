@@ -23,7 +23,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.TEACHER)
+@Roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.RECEPTIONIST)
 @Controller('branches')
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
@@ -35,8 +35,11 @@ export class BranchesController {
   }
 
   @Get()
-  findAll(@Query() query: BaseQueryDto) {
-    return this.branchesService.findAll(query);
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: BaseQueryDto,
+  ) {
+    return this.branchesService.findAll(user, query);
   }
   @Roles(UserRole.ADMIN)
   @Get('trash')

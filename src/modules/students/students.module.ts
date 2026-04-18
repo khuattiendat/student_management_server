@@ -12,6 +12,9 @@ import { StudentsService } from './students.service';
 import { AuthModule } from '../auth/auth.module';
 import { Attendance } from '@/database/entities/attendance.entity';
 import { Class } from '@/database/entities/class.entity';
+import { UsersService } from '../users/users.service';
+import { User } from '@/database/entities/user.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -27,6 +30,7 @@ import { Class } from '@/database/entities/class.entity';
       Class,
     ]),
     AuthModule,
+    UsersModule,
   ],
   controllers: [StudentsController],
   providers: [StudentsService],

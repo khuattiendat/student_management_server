@@ -68,6 +68,7 @@ export declare class SessionsController {
             attendanceId: number | null;
             status: import("../../database/entities/attendance.entity").AttendanceStatus | null;
             rate: number | null;
+            note: string | null;
         }[];
     }>;
     getAttendance(id: number): Promise<{
@@ -82,6 +83,7 @@ export declare class SessionsController {
             attendanceId: number | null;
             status: import("../../database/entities/attendance.entity").AttendanceStatus | null;
             rate: number | null;
+            note: string | null;
         }[];
     }>;
     updateAttendance(id: number, bulkAttendanceDto: BulkAttendanceDto): Promise<{
@@ -96,6 +98,7 @@ export declare class SessionsController {
             attendanceId: number | null;
             status: import("../../database/entities/attendance.entity").AttendanceStatus | null;
             rate: number | null;
+            note: string | null;
         }[];
     }>;
 }

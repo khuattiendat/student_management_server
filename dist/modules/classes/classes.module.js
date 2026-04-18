@@ -18,6 +18,7 @@ const session_entity_1 = require("../../database/entities/session.entity");
 const classes_controller_1 = require("./classes.controller");
 const classes_service_1 = require("./classes.service");
 const auth_module_1 = require("../auth/auth.module");
+const users_module_1 = require("../users/users.module");
 let ClassesModule = class ClassesModule {
 };
 exports.ClassesModule = ClassesModule;
@@ -26,6 +27,7 @@ exports.ClassesModule = ClassesModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([class_entity_1.Class, branch_entity_1.Branch, user_entity_1.User, package_entity_1.Package, student_entity_1.Student, session_entity_1.Session]),
             auth_module_1.AuthModule,
+            users_module_1.UsersModule,
         ],
         controllers: [classes_controller_1.ClassesController],
         providers: [classes_service_1.ClassesService],

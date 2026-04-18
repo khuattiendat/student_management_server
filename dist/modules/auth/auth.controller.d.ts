@@ -15,7 +15,7 @@ export declare class AuthController {
             id: number;
             name: string;
             userName: string;
-            phone: string;
+            phone: string | undefined;
             branches: {
                 id: number;
                 name: string;
@@ -34,7 +34,7 @@ export declare class AuthController {
             id: number;
             name: string;
             userName: string;
-            phone: string;
+            phone: string | undefined;
             branches: {
                 id: number;
                 name: string;
@@ -57,7 +57,7 @@ export declare class AuthController {
         id: number;
         name: string;
         userName: string;
-        phone: string;
+        phone: string | undefined;
         branches: {
             id: number;
             name: string;
@@ -77,7 +77,7 @@ export declare class AuthController {
         id: number;
         name: string;
         userName: string;
-        phone: string;
+        phone: string | undefined;
         branches: {
             id: number;
             name: string;

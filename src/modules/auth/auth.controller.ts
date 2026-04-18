@@ -38,7 +38,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.TEACHER)
+  @Roles(UserRole.ADMIN, UserRole.TEACHER, UserRole.RECEPTIONIST)
   @Get('profile')
   profile(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.profile(user.sub);

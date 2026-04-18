@@ -38,7 +38,7 @@ let AuthService = class AuthService {
             relations: ['branches'],
         });
         if (existingUser) {
-            throw new common_1.ConflictException('Username already exists');
+            throw new common_1.ConflictException('Tên đăng nhập đã được sử dụng');
         }
         const password = await bcrypt.hash(registerDto.password, 10);
         const branchIds = [...new Set(registerDto.branchIds ?? [])];
@@ -58,6 +58,7 @@ let AuthService = class AuthService {
             userName: registerDto.userName,
             password,
             phone: registerDto.phone,
+            role: registerDto.role ?? user_entity_1.UserRole.TEACHER,
             branches,
         });
         const savedUser = await this.userRepository.save(user);

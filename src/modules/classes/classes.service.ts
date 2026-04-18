@@ -19,6 +19,7 @@ import { UpdateClassDto } from './dto/update-class.dto';
 import { QueryClassDto } from './dto/query-class.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UsersService } from '../users/users.service';
 
 type WeekdaySchedule = {
   startTime: string;
@@ -42,6 +43,7 @@ export class ClassesService {
     private readonly studentRepository: Repository<Student>,
     @InjectRepository(Session)
     private readonly sessionRepository: Repository<Session>,
+    private readonly userService: UsersService,
   ) {}
 
   async create(createClassDto: CreateClassDto) {
@@ -136,6 +138,7 @@ export class ClassesService {
     const limit = Math.max(Number(query.limit) || 10, 1);
     const search = query.search?.trim();
     const isTeacher = user.role === UserRole.TEACHER;
+    const isAdmin = user.role === UserRole.ADMIN;
 
     const queryBuilder = this.classRepository
       .createQueryBuilder('class')
@@ -144,6 +147,15 @@ export class ClassesService {
       .orderBy('class.id', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
+
+    if (!isAdmin && !isTeacher) {
+      const branchIds = await this.userService.getBranchIdsForUser(user.sub);
+      if (branchIds.length > 0) {
+        queryBuilder.where('class.branchId IN (:...branchIds)', {
+          branchIds,
+        });
+      }
+    }
 
     if (isTeacher) {
       queryBuilder.where('class.teacherId = :teacherId', {

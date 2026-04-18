@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Like, Repository } from 'typeorm';
+import { In, IsNull, Like, Repository } from 'typeorm';
 import { Branch } from '@/database/entities/branch.entity';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
@@ -12,12 +12,15 @@ import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 import { UserRole } from '@/database/entities/user.entity';
 import { Student } from '@/database/entities/student.entity';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class BranchesService {
   constructor(
     @InjectRepository(Branch)
     private readonly branchRepository: Repository<Branch>,
+
+    private readonly userService: UsersService,
   ) {}
 
   async findAllWithClasses(user: AuthenticatedUser) {
@@ -70,18 +73,35 @@ export class BranchesService {
     return this.branchRepository.save(branch);
   }
 
-  async findAll(query: BaseQueryDto) {
+  async findAll(user: AuthenticatedUser, query: BaseQueryDto) {
     const page = Math.max(Number(query.page) || 1, 1);
     const limit = Math.max(Number(query.limit) || 10, 1);
     const search = query.search?.trim();
+    const { role, sub: userId } = user;
+    let where = {} as any;
 
-    const where = search
-      ? [
-          { name: Like(`%${search}%`) },
-          { address: Like(`%${search}%`) },
-          { phone: Like(`%${search}%`) },
-        ]
-      : undefined;
+    const isAdmin = role === UserRole.ADMIN;
+    if (!isAdmin) {
+      const branchIds = await this.userService.getBranchIdsForUser(userId);
+
+      where = search
+        ? [
+            { id: In(branchIds), name: Like(`%${search}%`) },
+            { id: In(branchIds), address: Like(`%${search}%`) },
+            { id: In(branchIds), phone: Like(`%${search}%`) },
+          ]
+        : { id: In(branchIds) };
+    }
+
+    if (isAdmin) {
+      where = search
+        ? [
+            { name: Like(`%${search}%`) },
+            { address: Like(`%${search}%`) },
+            { phone: Like(`%${search}%`) },
+          ]
+        : undefined;
+    }
 
     const [items, total] = await this.branchRepository.findAndCount({
       where,

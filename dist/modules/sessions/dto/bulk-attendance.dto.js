@@ -17,6 +17,7 @@ class AttendanceStudentItemDto {
     studentId;
     status;
     rate;
+    note;
 }
 exports.AttendanceStudentItemDto = AttendanceStudentItemDto;
 __decorate([
@@ -36,6 +37,10 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], AttendanceStudentItemDto.prototype, "rate", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], AttendanceStudentItemDto.prototype, "note", void 0);
 class BulkAttendanceDto {
     attendances;
 }

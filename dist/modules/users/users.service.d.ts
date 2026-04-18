@@ -12,7 +12,7 @@ export declare class UsersService {
             id: number;
             name: string;
             userName: string;
-            phone: string;
+            phone: string | undefined;
             branches: {
                 id: number;
                 name: string;
@@ -37,7 +37,7 @@ export declare class UsersService {
         id: number;
         name: string;
         userName: string;
-        phone: string;
+        phone: string | undefined;
         branches: {
             id: number;
             name: string;
@@ -55,7 +55,7 @@ export declare class UsersService {
         id: number;
         name: string;
         userName: string;
-        phone: string;
+        phone: string | undefined;
         branches: {
             id: number;
             name: string;
@@ -76,4 +76,5 @@ export declare class UsersService {
     private findUserById;
     private resolveBranches;
     private buildUserProfile;
+    getBranchIdsForUser(userId: number): Promise<number[]>;
 }

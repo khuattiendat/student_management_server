@@ -1,19 +1,12 @@
 import { BaseEntity } from '@/common/base/base.entity';
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  JoinTable,
-  ManyToMany,
-  ManyToOne,
-  OneToMany,
-} from 'typeorm';
+import { Column, Entity, JoinTable, ManyToMany, OneToMany } from 'typeorm';
 import { Branch } from './branch.entity';
 import { Class } from './class.entity';
 import { TeacherCode } from './teacherCode.entity';
 export enum UserRole {
   ADMIN = 'admin',
   TEACHER = 'teacher',
+  RECEPTIONIST = 'receptionist',
 }
 export enum UserStatus {
   ACTIVE = 'active',
@@ -26,17 +19,17 @@ export class User extends BaseEntity {
     length: 255,
     name: 'name',
   })
-  name: string;
+  name!: string;
 
   @Column({
     nullable: true,
     length: 20,
     name: 'phone',
   })
-  phone: string;
+  phone?: string;
 
   @Column({ unique: true, nullable: false, length: 255, name: 'user_name' })
-  userName: string;
+  userName!: string;
 
   @Column({
     nullable: false,
@@ -44,7 +37,7 @@ export class User extends BaseEntity {
     length: 255,
     name: 'password',
   })
-  password: string;
+  password!: string;
 
   @Column({
     type: 'enum',
@@ -52,7 +45,7 @@ export class User extends BaseEntity {
     default: UserRole.TEACHER,
     name: 'role',
   })
-  role: UserRole;
+  role!: UserRole;
 
   @Column({
     type: 'enum',
@@ -60,7 +53,7 @@ export class User extends BaseEntity {
     default: UserStatus.ACTIVE,
     name: 'status',
   })
-  status: UserStatus;
+  status!: UserStatus;
 
   @ManyToMany(() => Branch, (branch) => branch.managedUsers)
   @JoinTable({
@@ -74,11 +67,11 @@ export class User extends BaseEntity {
       referencedColumnName: 'id',
     },
   })
-  branches: Branch[];
+  branches!: Branch[];
 
   @OneToMany(() => Class, (classEntity) => classEntity.teacher)
-  classes: Class[];
+  classes?: Class[];
 
   @OneToMany(() => TeacherCode, (code) => code.teacher)
-  code: TeacherCode[];
+  code?: TeacherCode[];
 }

@@ -31,8 +31,8 @@ let BranchesController = class BranchesController {
     create(createBranchDto) {
         return this.branchesService.create(createBranchDto);
     }
-    findAll(query) {
-        return this.branchesService.findAll(query);
+    findAll(user, query) {
+        return this.branchesService.findAll(user, query);
     }
     findAllTrash(query) {
         return this.branchesService.findAllTrash(query);
@@ -67,9 +67,10 @@ __decorate([
 ], BranchesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    __param(0, (0, common_1.Query)()),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [base_QueryDto_1.BaseQueryDto]),
+    __metadata("design:paramtypes", [Object, base_QueryDto_1.BaseQueryDto]),
     __metadata("design:returntype", void 0)
 ], BranchesController.prototype, "findAll", null);
 __decorate([
@@ -129,7 +130,7 @@ __decorate([
 ], BranchesController.prototype, "findAllWithClasses", null);
 exports.BranchesController = BranchesController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.TEACHER),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.TEACHER, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Controller)('branches'),
     __metadata("design:paramtypes", [branches_service_1.BranchesService])
 ], BranchesController);

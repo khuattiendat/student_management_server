@@ -19,6 +19,7 @@ var UserRole;
 (function (UserRole) {
     UserRole["ADMIN"] = "admin";
     UserRole["TEACHER"] = "teacher";
+    UserRole["RECEPTIONIST"] = "receptionist";
 })(UserRole || (exports.UserRole = UserRole = {}));
 var UserStatus;
 (function (UserStatus) {

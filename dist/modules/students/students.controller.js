@@ -29,6 +29,7 @@ const base_QueryDto_1 = require("../../common/base/base.QueryDto");
 const cycle_dto_1 = require("./dto/cycle.dto");
 const updateIsPaidEnrollment_dto_1 = require("./dto/updateIsPaidEnrollment.dto");
 const updateEnrollments_dto_1 = require("./dto/updateEnrollments.dto");
+const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 let StudentsController = class StudentsController {
     studentsService;
     constructor(studentsService) {
@@ -37,8 +38,8 @@ let StudentsController = class StudentsController {
     create(createStudentDto) {
         return this.studentsService.create(createStudentDto);
     }
-    findAll(query) {
-        return this.studentsService.findAll(query);
+    findAll(user, query) {
+        return this.studentsService.findAll(user, query);
     }
     findByEnrollments(query) {
         return this.studentsService.findByEnrollments(query);
@@ -91,7 +92,7 @@ let StudentsController = class StudentsController {
 };
 exports.StudentsController = StudentsController;
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -100,9 +101,10 @@ __decorate([
 ], StudentsController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
-    __param(0, (0, common_1.Query)()),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Query)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [query_student_dto_1.QueryStudentDto]),
+    __metadata("design:paramtypes", [Object, query_student_dto_1.QueryStudentDto]),
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "findAll", null);
 __decorate([
@@ -143,7 +145,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "findAttendances", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Put)(':id'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -161,7 +163,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "updateCycleStartDate", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Put)('parents/:parentId/zalo-name'),
     __param(0, (0, common_1.Param)('parentId', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)('zaloName')),
@@ -170,7 +172,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "updateParentZaloName", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Put)(':id/is-called'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)('isCalled')),
@@ -179,7 +181,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "toggleIsCalled", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Put)(':id/is-texted'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)('isTexted')),
@@ -188,7 +190,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "toggleIsTexted", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Put)(':id/enrollments/:enrollmentId/is-paid'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Param)('enrollmentId', common_1.ParseIntPipe)),
@@ -198,7 +200,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "toggleIsPaid", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Put)(':id/enrollments'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -207,7 +209,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], StudentsController.prototype, "updateEnrollments", null);
 __decorate([
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Post)(':id/renew-course'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
@@ -241,7 +243,7 @@ __decorate([
 ], StudentsController.prototype, "forceRemove", null);
 exports.StudentsController = StudentsController = __decorate([
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.TEACHER),
+    (0, roles_decorator_1.Roles)(user_entity_1.UserRole.ADMIN, user_entity_1.UserRole.TEACHER, user_entity_1.UserRole.RECEPTIONIST),
     (0, common_1.Controller)('students'),
     __metadata("design:paramtypes", [students_service_1.StudentsService])
 ], StudentsController);

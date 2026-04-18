@@ -9,11 +9,13 @@ import { Session } from '@/database/entities/session.entity';
 import { ClassesController } from './classes.controller';
 import { ClassesService } from './classes.service';
 import { AuthModule } from '../auth/auth.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Class, Branch, User, Package, Student, Session]),
     AuthModule,
+    UsersModule,
   ],
   controllers: [ClassesController],
   providers: [ClassesService],

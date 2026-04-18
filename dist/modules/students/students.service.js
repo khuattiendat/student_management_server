@@ -26,6 +26,8 @@ const class_student_entity_1 = require("../../database/entities/class_student.en
 const session_entity_1 = require("../../database/entities/session.entity");
 const class_entity_1 = require("../../database/entities/class.entity");
 const class_packages_entity_1 = require("../../database/entities/class_packages.entity");
+const users_service_1 = require("../users/users.service");
+const user_entity_1 = require("../../database/entities/user.entity");
 let StudentsService = class StudentsService {
     studentRepository;
     branchRepository;
@@ -36,7 +38,8 @@ let StudentsService = class StudentsService {
     sessionRepository;
     classRepository;
     classStudentRepository;
-    constructor(studentRepository, branchRepository, parentRepository, packageRepository, enrollmentRepository, attendanceRepository, sessionRepository, classRepository, classStudentRepository) {
+    userService;
+    constructor(studentRepository, branchRepository, parentRepository, packageRepository, enrollmentRepository, attendanceRepository, sessionRepository, classRepository, classStudentRepository, userService) {
         this.studentRepository = studentRepository;
         this.branchRepository = branchRepository;
         this.parentRepository = parentRepository;
@@ -46,6 +49,7 @@ let StudentsService = class StudentsService {
         this.sessionRepository = sessionRepository;
         this.classRepository = classRepository;
         this.classStudentRepository = classStudentRepository;
+        this.userService = userService;
     }
     async create(createStudentDto) {
         const { name, addressDetail, birthday, branchId, isPaid, packageIds, parents: _parents, phone, provinceCode, provinceName, wardCode, wardName, } = createStudentDto;
@@ -79,10 +83,12 @@ let StudentsService = class StudentsService {
             return this.buildStudentProfile(createdStudent);
         });
     }
-    async findAll(query) {
+    async findAll(user, query) {
+        const { role, sub: userId } = user;
         const page = Math.max(Number(query.page) || 1, 1);
         const limit = Math.max(Number(query.limit) || 10, 1);
         const search = query.search?.trim();
+        const isAdmin = role === user_entity_1.UserRole.ADMIN;
         const queryBuilder = this.studentRepository
             .createQueryBuilder('student')
             .leftJoinAndSelect('student.branch', 'branch')
@@ -104,6 +110,14 @@ let StudentsService = class StudentsService {
                     .orWhere('student.birthday LIKE :search', { search: `%${search}%` })
                     .orWhere('parent.name LIKE :search', { search: `%${search}%` });
             }));
+        }
+        if (!isAdmin) {
+            const branchIds = await this.userService.getBranchIdsForUser(userId);
+            if (branchIds.length > 0) {
+                queryBuilder.andWhere('student.branchId IN (:...branchIds)', {
+                    branchIds,
+                });
+            }
         }
         if (query.branchId) {
             const branchId = Number(query.branchId);
@@ -955,6 +969,7 @@ exports.StudentsService = StudentsService = __decorate([
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        typeorm_2.Repository])
+        typeorm_2.Repository,
+        users_service_1.UsersService])
 ], StudentsService);
 //# sourceMappingURL=students.service.js.map

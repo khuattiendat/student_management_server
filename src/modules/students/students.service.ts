@@ -29,6 +29,9 @@ import { Class } from '@/database/entities/class.entity';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
 import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
 import { ClassPackage } from '@/database/entities/class_packages.entity';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UsersService } from '../users/users.service';
+import { UserRole } from '@/database/entities/user.entity';
 
 @Injectable()
 export class StudentsService {
@@ -51,6 +54,7 @@ export class StudentsService {
     private readonly classRepository: Repository<Class>,
     @InjectRepository(ClassStudent)
     private readonly classStudentRepository: Repository<ClassStudent>,
+    private readonly userService: UsersService,
   ) {}
 
   async create(createStudentDto: CreateStudentDto) {
@@ -115,10 +119,12 @@ export class StudentsService {
     });
   }
 
-  async findAll(query: QueryStudentDto) {
+  async findAll(user: AuthenticatedUser, query: QueryStudentDto) {
+    const { role, sub: userId } = user;
     const page = Math.max(Number(query.page) || 1, 1);
     const limit = Math.max(Number(query.limit) || 10, 1);
     const search = query.search?.trim();
+    const isAdmin = role === UserRole.ADMIN;
 
     const queryBuilder = this.studentRepository
       .createQueryBuilder('student')
@@ -144,6 +150,14 @@ export class StudentsService {
             .orWhere('parent.name LIKE :search', { search: `%${search}%` });
         }),
       );
+    }
+    if (!isAdmin) {
+      const branchIds = await this.userService.getBranchIdsForUser(userId);
+      if (branchIds.length > 0) {
+        queryBuilder.andWhere('student.branchId IN (:...branchIds)', {
+          branchIds,
+        });
+      }
     }
 
     if (query.branchId) {

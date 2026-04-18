@@ -10,6 +10,7 @@ import { UpdateClassDto } from './dto/update-class.dto';
 import { QueryClassDto } from './dto/query-class.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UsersService } from '../users/users.service';
 export declare class ClassesService {
     private readonly classRepository;
     private readonly branchRepository;
@@ -17,7 +18,8 @@ export declare class ClassesService {
     private readonly packageRepository;
     private readonly studentRepository;
     private readonly sessionRepository;
-    constructor(classRepository: Repository<Class>, branchRepository: Repository<Branch>, userRepository: Repository<User>, packageRepository: Repository<Package>, studentRepository: Repository<Student>, sessionRepository: Repository<Session>);
+    private readonly userService;
+    constructor(classRepository: Repository<Class>, branchRepository: Repository<Branch>, userRepository: Repository<User>, packageRepository: Repository<Package>, studentRepository: Repository<Student>, sessionRepository: Repository<Session>, userService: UsersService);
     create(createClassDto: CreateClassDto): Promise<Omit<Class, "classStudents" | "sessions" | "classPackages"> & {
         students: Student[];
         studentIds: number[];

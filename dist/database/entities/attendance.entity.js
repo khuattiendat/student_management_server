@@ -18,15 +18,17 @@ var AttendanceStatus;
 (function (AttendanceStatus) {
     AttendanceStatus["PRESENT"] = "present";
     AttendanceStatus["LATE"] = "late";
-    AttendanceStatus["EXCUSED_ABSENT"] = "excused_absent";
     AttendanceStatus["UNEXCUSED_ABSENT"] = "unexcused_absent";
     AttendanceStatus["LATE_CANCEL_ABSENT"] = "late_cancel_absent";
+    AttendanceStatus["EXCUSED_ABSENT"] = "excused_absent";
+    AttendanceStatus["UNJUSTIFIED_LEAVE"] = "unjustified_leave";
 })(AttendanceStatus || (exports.AttendanceStatus = AttendanceStatus = {}));
 let Attendance = class Attendance extends base_entity_1.BaseEntity {
     sessionId;
     studentId;
     status;
     rate;
+    note;
     session;
     student;
 };
@@ -52,6 +54,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'rate', type: 'int', nullable: true }),
     __metadata("design:type", Object)
 ], Attendance.prototype, "rate", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'note', type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], Attendance.prototype, "note", void 0);
 __decorate([
     (0, typeorm_1.ManyToOne)(() => session_entity_1.Session, (session) => session.attendances, {
         nullable: false,

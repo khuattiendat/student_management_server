@@ -57,6 +57,11 @@ let UsersService = class UsersService {
                 status: query.status,
             });
         }
+        if (query.role) {
+            queryBuilder.andWhere('user.role = :role', {
+                role: query.role,
+            });
+        }
         const [items, total] = await queryBuilder.getManyAndCount();
         return {
             items: items.map((user) => this.buildUserProfile(user)),
@@ -80,7 +85,7 @@ let UsersService = class UsersService {
                 where: { userName: updateUserDto.userName },
             });
             if (existingUser) {
-                throw new common_1.ConflictException('Username already exists');
+                throw new common_1.ConflictException('Tên đăng nhập đã được sử dụng');
             }
             user.userName = updateUserDto.userName;
         }
@@ -168,6 +173,16 @@ let UsersService = class UsersService {
             createdAt: user.createdAt,
             updatedAt: user.updatedAt,
         };
+    }
+    async getBranchIdsForUser(userId) {
+        const user = await this.userRepository.findOne({
+            where: { id: userId },
+            relations: ['branches'],
+        });
+        if (!user) {
+            throw new common_1.NotFoundException(`User with id ${userId} not found`);
+        }
+        return user.branches.map((branch) => branch.id);
     }
 };
 exports.UsersService = UsersService;

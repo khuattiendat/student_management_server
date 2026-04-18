@@ -9,6 +9,7 @@ import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { CycleDto } from './dto/cycle.dto';
 import { UpdateIsPaidEnrollmentDto } from './dto/updateIsPaidEnrollment.dto';
 import { UpdateEnrollmentsDto } from './dto/updateEnrollments.dto';
+import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
 export declare class StudentsController {
     private readonly studentsService;
     constructor(studentsService: StudentsService);
@@ -46,7 +47,7 @@ export declare class StudentsController {
         updatedAt: Date | null;
         deletedAt: Date | null;
     }>;
-    findAll(query: QueryStudentDto): Promise<{
+    findAll(user: AuthenticatedUser, query: QueryStudentDto): Promise<{
         items: {
             packageIds: number[];
             packages: import("../../database/entities/package.entity").Package[];

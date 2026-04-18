@@ -4,9 +4,11 @@ import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { BaseQueryDto } from '@/common/base/base.QueryDto';
 import { AuthenticatedUser } from '@/common/interfaces/authenticated-user.interface';
+import { UsersService } from '../users/users.service';
 export declare class BranchesService {
     private readonly branchRepository;
-    constructor(branchRepository: Repository<Branch>);
+    private readonly userService;
+    constructor(branchRepository: Repository<Branch>, userService: UsersService);
     findAllWithClasses(user: AuthenticatedUser): Promise<Branch[]>;
     findAllTrash(query: BaseQueryDto): Promise<{
         items: Branch[];
@@ -18,7 +20,7 @@ export declare class BranchesService {
         };
     }>;
     create(createBranchDto: CreateBranchDto): Promise<Branch>;
-    findAll(query: BaseQueryDto): Promise<{
+    findAll(user: AuthenticatedUser, query: BaseQueryDto): Promise<{
         items: Branch[];
         pagination: {
             total: number;

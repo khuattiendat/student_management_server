@@ -42,7 +42,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new ConflictException('Username already exists');
+      throw new ConflictException('Tên đăng nhập đã được sử dụng');
     }
 
     const password = await bcrypt.hash(registerDto.password, 10);
@@ -68,6 +68,7 @@ export class AuthService {
       userName: registerDto.userName,
       password,
       phone: registerDto.phone,
+      role: registerDto.role ?? UserRole.TEACHER,
       branches,
     });
 

@@ -1,4 +1,4 @@
-import { UserStatus } from '@/database/entities/user.entity';
+import { UserRole, UserStatus } from '@/database/entities/user.entity';
 export declare class RegisterDto {
     name: string;
     userName: string;
@@ -6,4 +6,5 @@ export declare class RegisterDto {
     phone?: string;
     status?: UserStatus;
     branchIds?: number[];
+    role?: UserRole;
 }

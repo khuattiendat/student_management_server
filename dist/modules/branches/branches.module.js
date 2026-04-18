@@ -13,12 +13,13 @@ const branch_entity_1 = require("../../database/entities/branch.entity");
 const branches_controller_1 = require("./branches.controller");
 const branches_service_1 = require("./branches.service");
 const auth_module_1 = require("../auth/auth.module");
+const users_module_1 = require("../users/users.module");
 let BranchesModule = class BranchesModule {
 };
 exports.BranchesModule = BranchesModule;
 exports.BranchesModule = BranchesModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([branch_entity_1.Branch]), auth_module_1.AuthModule],
+        imports: [typeorm_1.TypeOrmModule.forFeature([branch_entity_1.Branch]), auth_module_1.AuthModule, users_module_1.UsersModule],
         controllers: [branches_controller_1.BranchesController],
         providers: [branches_service_1.BranchesService],
         exports: [branches_service_1.BranchesService],

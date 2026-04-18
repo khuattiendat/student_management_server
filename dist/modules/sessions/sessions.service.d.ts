@@ -35,6 +35,7 @@ export declare class SessionsService {
             attendanceId: number | null;
             status: AttendanceStatus | null;
             rate: number | null;
+            note: string | null;
         }[];
     }>;
     getAttendance(sessionId: number): Promise<{
@@ -49,6 +50,7 @@ export declare class SessionsService {
             attendanceId: number | null;
             status: AttendanceStatus | null;
             rate: number | null;
+            note: string | null;
         }[];
     }>;
     updateAttendanceList(sessionId: number, bulkAttendanceDto: BulkAttendanceDto): Promise<{
@@ -63,6 +65,7 @@ export declare class SessionsService {
             attendanceId: number | null;
             status: AttendanceStatus | null;
             rate: number | null;
+            note: string | null;
         }[];
     }>;
     create(createSessionDto: CreateSessionDto, user: AuthenticatedUser): Promise<Session>;

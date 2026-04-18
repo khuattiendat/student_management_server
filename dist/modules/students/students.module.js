@@ -21,6 +21,7 @@ const students_service_1 = require("./students.service");
 const auth_module_1 = require("../auth/auth.module");
 const attendance_entity_1 = require("../../database/entities/attendance.entity");
 const class_entity_1 = require("../../database/entities/class.entity");
+const users_module_1 = require("../users/users.module");
 let StudentsModule = class StudentsModule {
 };
 exports.StudentsModule = StudentsModule;
@@ -39,6 +40,7 @@ exports.StudentsModule = StudentsModule = __decorate([
                 class_entity_1.Class,
             ]),
             auth_module_1.AuthModule,
+            users_module_1.UsersModule,
         ],
         controllers: [students_controller_1.StudentsController],
         providers: [students_service_1.StudentsService],
