@@ -19,7 +19,7 @@ export class AppService {
   ) {}
 
   getHello(): string {
-    return 'Hello World 123';
+    return 'Hello World';
   }
 
   async getAdminDashboard(params: { branchId?: string }) {
