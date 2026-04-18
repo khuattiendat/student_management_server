@@ -138,6 +138,15 @@ export class StudentsController {
   }
 
   @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
+  @Put('enrollments/:enrollmentId/remaining-sessions')
+  updateRemainingSessions(
+    @Param('enrollmentId', ParseIntPipe) enrollmentId: number,
+    @Body() data: { remainingSessions: number },
+  ) {
+    return this.studentsService.updateRemainingSessions(enrollmentId, data);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Post(':id/renew-course')
   renewCourse(
     @Param('id', ParseIntPipe) id: number,

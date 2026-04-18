@@ -655,6 +655,34 @@ export class StudentsService {
       return this.buildStudentProfile(updatedStudent);
     });
   }
+  async updateRemainingSessions(
+    enrollmentId: number,
+    data: { remainingSessions: number },
+  ) {
+    const { remainingSessions } = data;
+    if (!Number.isInteger(remainingSessions)) {
+      throw new BadRequestException(
+        'remainingSessions must be a non-negative integer',
+      );
+    }
+    if (!Number.isInteger(enrollmentId) || enrollmentId < 1) {
+      throw new BadRequestException('enrollmentId must be a positive integer');
+    }
+    const enrollment = await this.enrollmentRepository.findOne({
+      where: { id: enrollmentId },
+    });
+    if (!enrollment) {
+      throw new NotFoundException(
+        `Enrollment with id ${enrollmentId} not found`,
+      );
+    }
+    enrollment.remainingSessions = remainingSessions;
+    await this.enrollmentRepository.save(enrollment);
+    return {
+      message: `Enrollment remainingSessions updated to ${remainingSessions}`,
+      enrollmentId,
+    };
+  }
 
   async update(id: number, updateStudentDto: UpdateStudentDto) {
     return this.studentRepository.manager.transaction(async (manager) => {
