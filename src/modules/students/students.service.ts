@@ -655,6 +655,43 @@ export class StudentsService {
       return this.buildStudentProfile(updatedStudent);
     });
   }
+  async deleteEnrollment(enrollmentId: number) {
+    return this.enrollmentRepository.manager.transaction(async (manager) => {
+      const enrollment = await manager.getRepository(Enrollment).findOne({
+        where: { id: enrollmentId },
+      });
+      if (!enrollment) {
+        throw new NotFoundException(
+          `Enrollment with id ${enrollmentId} not found`,
+        );
+      }
+      const studentId = enrollment.studentId;
+      const classStudents = await manager
+        .getRepository(ClassStudent)
+        .find({ where: { studentId } });
+
+      const classIds = classStudents.map(
+        (classStudent) => classStudent.classId,
+      );
+      if (classIds.length > 0) {
+        const classPackageRepository = manager.getRepository(ClassPackage);
+        const classPackages = await classPackageRepository.find({
+          where: { classId: In(classIds), packageId: enrollment.packageId },
+        });
+        if (classPackages.length > 0) {
+          const classIdsToRemoveStudent = classPackages.map(
+            (classPackage) => classPackage.classId,
+          );
+
+          await manager.getRepository(ClassStudent).delete({
+            studentId,
+            classId: In(classIdsToRemoveStudent),
+          });
+        }
+      }
+      await manager.getRepository(Enrollment).delete(enrollmentId);
+    });
+  }
   async updateRemainingSessions(
     enrollmentId: number,
     data: { remainingSessions: number },

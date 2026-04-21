@@ -138,6 +138,14 @@ export class StudentsController {
   }
 
   @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
+  @Delete('enrollments/:enrollmentId')
+  deleteEnrollment(
+    @Param('enrollmentId', ParseIntPipe) enrollmentId: number,
+  ) {
+    return this.studentsService.deleteEnrollment(enrollmentId);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.RECEPTIONIST)
   @Put('enrollments/:enrollmentId/remaining-sessions')
   updateRemainingSessions(
     @Param('enrollmentId', ParseIntPipe) enrollmentId: number,

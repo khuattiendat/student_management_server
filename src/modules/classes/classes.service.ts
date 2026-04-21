@@ -276,11 +276,6 @@ export class ClassesService {
     const classEntity = await this.findClassWithRelations(id);
     const { studentIds, packageIds, scheduleByWeekday, ...updatePayload } =
       updateClassDto;
-    const scheduleRelevantChanged =
-      updateClassDto.weekdays !== undefined ||
-      updateClassDto.scheduleByWeekday !== undefined ||
-      updateClassDto.packageIds !== undefined ||
-      updateClassDto.type !== undefined;
     const normalizedStudentIds =
       studentIds === undefined
         ? undefined
@@ -320,15 +315,59 @@ export class ClassesService {
     );
     classEntity.packageId = selectedPackage?.id ?? null;
 
+    const currentWeekdays = this.normalizeWeekdays(classEntity.weekdays);
     const nextWeekdays = this.normalizeWeekdays(
-      updateClassDto.weekdays ?? classEntity.weekdays,
+      updateClassDto.weekdays ?? currentWeekdays,
     );
-    const effectiveScheduleByWeekday = this.resolveScheduleByWeekdayForUpdate(
+    const weekdaysChanged =
+      currentWeekdays.length !== nextWeekdays.length ||
+      currentWeekdays.some((weekday, index) => weekday !== nextWeekdays[index]);
+
+    const currentScheduleByWeekday = this.getPersistedScheduleByWeekday(
       classEntity,
-      nextWeekdays,
-      scheduleByWeekday,
-      scheduleRelevantChanged,
+      currentWeekdays,
     );
+
+    const effectiveScheduleByWeekday = scheduleByWeekday
+      ? this.normalizeScheduleByWeekday(scheduleByWeekday, nextWeekdays)
+      : this.resolveScheduleByWeekdayForUpdate(
+          classEntity,
+          nextWeekdays,
+          undefined,
+          weekdaysChanged,
+        );
+
+    const normalizedCurrentScheduleForNextWeekdays =
+      this.projectScheduleByWeekday(currentScheduleByWeekday, nextWeekdays);
+    const scheduleChanged =
+      scheduleByWeekday !== undefined &&
+      !this.isSameScheduleByWeekday(
+        normalizedCurrentScheduleForNextWeekdays,
+        effectiveScheduleByWeekday,
+        nextWeekdays,
+      );
+
+    const existingPackageIds = [
+      ...new Set(
+        (classEntity.classPackages ?? []).map((item) => item.packageId),
+      ),
+    ].sort((a, b) => a - b);
+    const nextPackageIds = [
+      ...(normalizedPackageIds ?? existingPackageIds),
+    ].sort((a, b) => a - b);
+    const packageIdsChanged =
+      existingPackageIds.length !== nextPackageIds.length ||
+      existingPackageIds.some(
+        (packageId, index) => packageId !== nextPackageIds[index],
+      );
+
+    const classTypeChanged =
+      updateClassDto.type !== undefined && nextType !== classEntity.type;
+    const shouldRegenerateFutureSessions =
+      weekdaysChanged ||
+      scheduleChanged ||
+      packageIdsChanged ||
+      classTypeChanged;
 
     const defaultSchedule = effectiveScheduleByWeekday[nextWeekdays[0]];
     classEntity.startTime = defaultSchedule.startTime;
@@ -348,7 +387,7 @@ export class ClassesService {
         await this.syncClassPackages(manager, id, normalizedPackageIds);
       }
 
-      if (scheduleRelevantChanged) {
+      if (shouldRegenerateFutureSessions) {
         await this.regenerateFutureSessions(
           classEntity,
           selectedPackage,
@@ -679,20 +718,40 @@ export class ClassesService {
   ): Promise<void> {
     const classStudentRepository = manager.getRepository(ClassStudent);
 
-    await classStudentRepository.delete({ classId });
+    const existingClassStudents = await classStudentRepository.find({
+      where: { classId },
+      select: ['studentId'],
+    });
 
-    if (studentIds.length === 0) {
-      return;
-    }
+    const existingStudentIdSet = new Set(
+      existingClassStudents.map((item) => item.studentId),
+    );
+    const targetStudentIdSet = new Set(studentIds);
 
-    const records = studentIds.map((studentId) =>
-      classStudentRepository.create({
-        classId,
-        studentId,
-      }),
+    const studentIdsToAdd = studentIds.filter(
+      (studentId) => !existingStudentIdSet.has(studentId),
+    );
+    const studentIdsToRemove = [...existingStudentIdSet].filter(
+      (studentId) => !targetStudentIdSet.has(studentId),
     );
 
-    await classStudentRepository.save(records);
+    if (studentIdsToRemove.length > 0) {
+      await classStudentRepository.delete({
+        classId,
+        studentId: In(studentIdsToRemove),
+      });
+    }
+
+    if (studentIdsToAdd.length > 0) {
+      const records = studentIdsToAdd.map((studentId) =>
+        classStudentRepository.create({
+          classId,
+          studentId,
+        }),
+      );
+
+      await classStudentRepository.save(records);
+    }
   }
 
   private async createSessionsForClass(
@@ -885,6 +944,60 @@ export class ClassesService {
     });
 
     return persistedSchedule;
+  }
+
+  private isSameScheduleByWeekday(
+    currentScheduleByWeekday: ScheduleByWeekday,
+    nextScheduleByWeekday: ScheduleByWeekday,
+    weekdays: number[],
+  ): boolean {
+    return weekdays.every((weekday) => {
+      const current = currentScheduleByWeekday[weekday];
+      const next = nextScheduleByWeekday[weekday];
+
+      if (!current || !next) {
+        return false;
+      }
+
+      return (
+        current.startTime === next.startTime && current.endTime === next.endTime
+      );
+    });
+  }
+
+  private getPersistedScheduleByWeekday(
+    classEntity: Class,
+    weekdays: number[],
+  ): ScheduleByWeekday {
+    if (classEntity.scheduleByWeekday) {
+      return this.normalizeScheduleByWeekday(
+        classEntity.scheduleByWeekday,
+        weekdays,
+      );
+    }
+
+    return this.resolveScheduleByWeekdayForUpdate(
+      classEntity,
+      weekdays,
+      undefined,
+      false,
+    );
+  }
+
+  private projectScheduleByWeekday(
+    source: ScheduleByWeekday,
+    weekdays: number[],
+  ): ScheduleByWeekday {
+    const projected: Partial<ScheduleByWeekday> = {};
+
+    weekdays.forEach((weekday) => {
+      const schedule = source[weekday];
+      if (schedule) {
+        projected[weekday] = schedule;
+      }
+    });
+
+    return projected as ScheduleByWeekday;
   }
 
   private resolveScheduleByWeekdayForUpdate(

@@ -167,9 +167,25 @@ export class SessionsService {
             ...nextAttendanceMap.keys(),
           ]),
         ];
+        const classId = session.classId;
+
+        const classStudentRepository = manager.getRepository(ClassStudent);
+        const studentInClassIds = await classStudentRepository.find({
+          where: {
+            classId,
+          },
+          select: ['studentId'],
+        });
+
+        const validStudentIdSet = new Set(
+          studentInClassIds.map((item) => item.studentId),
+        );
+        const filteredAffectedStudentIds = affectedStudentIds.filter(
+          (studentId) => validStudentIdSet.has(studentId),
+        );
 
         const deltaMap = new Map<number, number>();
-        affectedStudentIds.forEach((studentId) => {
+        filteredAffectedStudentIds.forEach((studentId) => {
           const previousStatus = existingAttendanceMap.get(studentId)?.status;
           const nextStatus = nextAttendanceMap.get(studentId)?.status;
 
