@@ -192,6 +192,11 @@ export class StudentsService {
       queryBuilder.andWhere('student.isTexted = :isTexted', { isTexted });
     }
 
+    if (query.isPaid) {
+      const isPaid = Number(query.isPaid) === 1;
+      queryBuilder.andWhere('enrollment.isPaid = :isPaid', { isPaid });
+    }
+
     if (query.packageType) {
       queryBuilder.andWhere('package.type = :packageType', {
         packageType: query.packageType,

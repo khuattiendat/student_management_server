@@ -26,4 +26,7 @@ export class QueryStudentDto extends BaseQueryDto {
 
   @IsOptional()
   birthMonth?: BirthMounth;
+
+  @IsOptional()
+  isPaid?: string;
 }
