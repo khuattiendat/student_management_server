@@ -29,4 +29,7 @@ export class QueryStudentDto extends BaseQueryDto {
 
   @IsOptional()
   isPaid?: string;
+  
+  @IsOptional()
+  studentJoinClass?: string;
 }

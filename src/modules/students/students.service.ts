@@ -55,7 +55,7 @@ export class StudentsService {
     @InjectRepository(ClassStudent)
     private readonly classStudentRepository: Repository<ClassStudent>,
     private readonly userService: UsersService,
-  ) {}
+  ) { }
 
   async create(createStudentDto: CreateStudentDto) {
     const {
@@ -207,6 +207,21 @@ export class StudentsService {
       queryBuilder.andWhere('MONTH(student.birthday) = :birthMonth', {
         birthMonth: query.birthMonth,
       });
+    }
+
+    if (query.studentJoinClass) {
+      const isJointed = Number(query.studentJoinClass) === 1;
+      if (isJointed) {
+        // Học viên đã tham gia ít nhất 1 lớp chưa bị xóa mềm
+        queryBuilder.andWhere(
+          'EXISTS (SELECT 1 FROM class_students cs INNER JOIN classes c ON c.id = cs.class_id AND c.deleted_at IS NULL WHERE cs.student_id = student.id AND cs.deleted_at IS NULL)',
+        );
+      } else {
+        // Học viên chưa tham gia lớp nào còn tồn tại (chưa bị xóa mềm)
+        queryBuilder.andWhere(
+          'NOT EXISTS (SELECT 1 FROM class_students cs INNER JOIN classes c ON c.id = cs.class_id AND c.deleted_at IS NULL WHERE cs.student_id = student.id AND cs.deleted_at IS NULL)',
+        );
+      }
     }
 
     const [items, total] = await queryBuilder.getManyAndCount();
@@ -398,15 +413,15 @@ export class StudentsService {
         scheduleByWeekday: classEntity.scheduleByWeekday,
         branch: classEntity.branch
           ? {
-              id: classEntity.branch.id,
-              name: classEntity.branch.name,
-            }
+            id: classEntity.branch.id,
+            name: classEntity.branch.name,
+          }
           : null,
         teacher: classEntity.teacher
           ? {
-              id: classEntity.teacher.id,
-              name: classEntity.teacher.name,
-            }
+            id: classEntity.teacher.id,
+            name: classEntity.teacher.name,
+          }
           : null,
       },
       schedule: sessions,
