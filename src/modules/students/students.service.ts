@@ -146,7 +146,10 @@ export class StudentsService {
           builder
             .where('student.name LIKE :search', { search: `%${search}%` })
             .orWhere('student.phone LIKE :search', { search: `%${search}%` })
-            .orWhere('student.birthday LIKE :search', { search: `%${search}%` })
+            .orWhere(
+              "DATE_FORMAT(student.birthday, '%d/%m/%Y') LIKE :search",
+              { search: `%${search}%` },
+            )
             .orWhere('parent.name LIKE :search', { search: `%${search}%` });
         }),
       );
